@@ -1,0 +1,18 @@
+version: "3"
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: shortener-app
+    ports:
+      - 8080:8080
+    environment:
+      SHORTENER_STORAGE_KIND: redis
+      SHORTENER_REDIS_HOST: redis
+  redis:
+    image: redis:4.0
+    command: [ "redis-server", "--maxmemory", "1gb", "--appendonly", "yes"]
+    container_name: shortener-redis
+    environment:
+      REDIS_PASSWORD: changeme

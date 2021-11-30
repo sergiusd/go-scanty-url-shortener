@@ -1,0 +1,25 @@
+{
+  "server": {
+    "port": "8080",
+    "schema": "http",
+    "prefix": "localhost:8080",
+    "err404": "",
+    "token": "changeme"
+  },
+  "storage": {
+    "kind": "redis",
+    "redis": {
+      "host": "127.0.0.1",
+      "port": 6379,
+      "password": ""
+    },
+    "psql": {
+      "host": "127.0.0.1",
+      "port": 5432,
+      "user": "postgres",
+      "password": "",
+      "name": "shortener",
+      "timeout": "5s"
+    }
+  }
+}
