@@ -1,4 +1,4 @@
-# Simple URL shortener on Golang + Redis
+# Simple URL shortener on Golang + ( Redis | PostgreSQL )
 
 ## Configuration
 See `config.json` and `config/config.go`. Environment variable overwrited json data.

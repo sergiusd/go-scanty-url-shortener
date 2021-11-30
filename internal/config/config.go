@@ -15,11 +15,13 @@ type Config struct {
 }
 
 type Server struct {
-	Port   string `json:"port" env:"SHORTENER_SERVER_PORT"`
-	Schema string `json:"schema" env:"SHORTENER_SERVER_SCHEMA"`
-	Prefix string `json:"prefix" env:"SHORTENER_SERVER_PREFIX"`
-	Err404 string `json:"err404" env:"SHORTENER_SERVER_ERR404"`
-	Token  string `json:"token" env:"SHORTENER_SERVER_TOKEN"`
+	Port        string         `json:"port" env:"SHORTENER_SERVER_PORT"`
+	Schema      string         `json:"schema" env:"SHORTENER_SERVER_SCHEMA"`
+	Prefix      string         `json:"prefix" env:"SHORTENER_SERVER_PREFIX"`
+	Err404      string         `json:"err404" env:"SHORTENER_SERVER_ERR404"`
+	Token       string         `json:"token" env:"SHORTENER_SERVER_TOKEN"`
+	ReadTimeout model.Duration `json:"readTimeout" env:"SHORTENER_SERVER_READ_TIMEOUT"`
+	IdleTimeout model.Duration `json:"idleTimeout" env:"SHORTENER_SERVER_IDLE_TIMEOUT"`
 }
 
 type Storage struct {

@@ -4,7 +4,9 @@
     "schema": "http",
     "prefix": "localhost:8080",
     "err404": "",
-    "token": "changeme"
+    "token": "changeme",
+    "readTimeout": "1s",
+    "idleTimeout": "10s"
   },
   "storage": {
     "kind": "redis",
@@ -19,7 +21,7 @@
       "user": "postgres",
       "password": "",
       "name": "shortener",
-      "timeout": "5s"
+      "timeout": "1s"
     }
   }
 }

@@ -28,37 +28,39 @@ func main() {
 
 	// configure http server
 	server := &fasthttp.Server{
-		Handler: handler.New(conf.Server, storageSrv).Handler,
+		Handler:     handler.New(conf.Server, storageSrv).Handler,
+		ReadTimeout: conf.Server.ReadTimeout.Duration,
+		IdleTimeout: conf.Server.IdleTimeout.Duration,
 	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt)
 
 	// start server
-	serverError := make(chan error, 1)
-	isShuttingDown := false
+	serverError := make(chan error)
 	go func() {
 		err := server.ListenAndServe(":" + conf.Server.Port)
-		if isShuttingDown {
-			serverError <- err
+		if err != nil {
+			log.Printf("Catch server error: %v\n", err)
 		}
+		serverError <- err
 	}()
-	log.Printf("Server started on :%v", conf.Server.Port)
+	log.Printf("Server started on :%v, %v / %v",
+		conf.Server.Port, conf.Server.ReadTimeout, conf.Server.IdleTimeout)
 
 	// waiting http server error or Ctrl+C
-loop:
 	select {
-	case err := <-serverError:
-		log.Println(err)
-		break loop
+	case <-serverError:
+		_ = storageSrv.Close()
+		// server already failed with error
+		log.Println("Server stopped")
+		return
 	case <-stop:
 		log.Println("Ctrl+C pressed")
-		break loop
+		_ = storageSrv.Close()
+		_ = server.Shutdown()
+		<-serverError // waiting server shutdown
+		log.Println("Server stopped")
+		return
 	}
-	isShuttingDown = true
-
-	// shutdown
-	_ = storageSrv.Close()
-	_ = server.Shutdown()
-	log.Println("Server stopped")
 }
