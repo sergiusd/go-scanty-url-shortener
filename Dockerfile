@@ -12,7 +12,7 @@ RUN go build -o shortener ./cmd/shortener/main.go
 
 
 FROM alpine
-EXPOSE 8080 8081
+EXPOSE 8080
 RUN adduser -D -H -h /app shortener && \
     mkdir -p /app  && \
     chown -R shortener:shortener /app

@@ -6,7 +6,7 @@ import (
 )
 
 func startCleanScheduler(pg *psql) {
-	ticker := time.NewTicker(time.Second * 10)
+	ticker := time.NewTicker(time.Hour)
 	log.Println("Started expired items cleaner")
 	for {
 		select {
