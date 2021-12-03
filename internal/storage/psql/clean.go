@@ -20,7 +20,7 @@ func startCleanScheduler(pg *psql) {
 }
 
 func (pg *psql) cleanExpired() error {
-	_, err := pg.conn.Exec(pg.ctx, "DELETE FROM links WHERE expires IS NOT NULL AND expires < $1", time.Now())
+	err := pg.exec("DELETE FROM links WHERE expires IS NOT NULL AND expires < $1", time.Now())
 	if err != nil {
 		log.Printf("Error on clean expires: %v\n", err)
 	}

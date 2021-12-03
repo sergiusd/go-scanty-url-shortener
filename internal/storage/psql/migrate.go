@@ -4,10 +4,10 @@ import (
 	"context"
 	"log"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 )
 
-func migrate(ctx context.Context, conn *pgx.Conn) error {
+func migrate(ctx context.Context, conn *pgxpool.Conn) error {
 	var tableExists bool
 	if err := conn.QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", "public.links").Scan(&tableExists); err != nil {
 		return err

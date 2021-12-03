@@ -10,6 +10,8 @@ services:
     environment:
       SHORTENER_STORAGE_KIND: redis
       SHORTENER_REDIS_HOST: redis
+    depends_on:
+      - redis
   redis:
     image: redis:4.0
     command: [ "redis-server", "--maxmemory", "1gb", "--appendonly", "yes"]
