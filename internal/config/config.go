@@ -10,8 +10,9 @@ import (
 )
 
 type Config struct {
-	Server  `json:"server"`
-	Storage `json:"storage"`
+	LogLevel string `json:"log_level" env:"SHORTENER_LOG_LEVEL"`
+	Server   `json:"server"`
+	Storage  `json:"storage"`
 }
 
 type Server struct {
@@ -39,6 +40,11 @@ type Storage struct {
 		Name     string         `json:"name" env:"SHORTENER_PSQL_NAME"`
 		Timeout  model.Duration `json:"timeout" env:"SHORTENER_PSQL_TIMEOUT"`
 	} `json:"psql"`
+	Bolt struct {
+		Path    string `json:"path" env:"SHORTENER_BOLT_PATH"`
+		Bucket  string `json:"bucket" env:"SHORTENER_BOLT_BUCKET"`
+		Timeout string `json:"timeout" env:"SHORTENER_BOLT_TIMEOUT"`
+	} `json:"bolt"`
 }
 
 func FromFileAndEnv(path string) (*Config, error) {

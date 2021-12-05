@@ -1,6 +1,8 @@
 package redis
 
-import "time"
+import (
+	"time"
+)
 
 type Item struct {
 	Id      uint64 `redis:"id"`
@@ -20,6 +22,7 @@ func (i *Item) ExportExpires() *time.Time {
 func (i *Item) ImportExpires(val *time.Time) {
 	if val == nil {
 		i.Expires = ""
+		return
 	}
 	exp := val.Format(time.RFC3339)
 	i.Expires = exp

@@ -1,16 +1,26 @@
 package storage
 
 import (
-	"log"
+	"context"
 	"math/rand"
 	"time"
+
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/sergiusd/go-scanty-url-shortener/internal/base62"
 	"github.com/sergiusd/go-scanty-url-shortener/internal/config"
 	"github.com/sergiusd/go-scanty-url-shortener/internal/model"
+	"github.com/sergiusd/go-scanty-url-shortener/internal/storage/bolt"
 	"github.com/sergiusd/go-scanty-url-shortener/internal/storage/psql"
 	"github.com/sergiusd/go-scanty-url-shortener/internal/storage/redis"
 )
+
+type storage struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	client client
+}
 
 type client interface {
 	IsUsed(id uint64) (bool, error)
@@ -20,27 +30,39 @@ type client interface {
 	Close() error
 }
 
+type clientCleaner interface {
+	CleanExpired() error
+}
+
 func New(conf config.Storage) (*storage, error) {
 	var err error
 	var client client
+	ctx, cancel := context.WithCancel(context.Background())
 	switch conf.Kind {
 	case "redis":
-		log.Printf("Use redis on %v:%v", conf.Redis.Host, conf.Redis.Port)
+		log.Infof("Use redis on %v:%v", conf.Redis.Host, conf.Redis.Port)
 		client, err = redis.New(conf.Redis.Host, conf.Redis.Port, conf.Redis.Password)
 	case "psql":
-		log.Printf("Use postgres on %v@%v:%v/%v, timeout %v", conf.Psql.User, conf.Psql.Host, conf.Psql.Port, conf.Psql.Name, conf.Psql.Timeout.Duration)
-		client, err = psql.New(conf.Psql.Host, conf.Psql.Port, conf.Psql.Name, conf.Psql.User, conf.Psql.Password, conf.Psql.Timeout.Duration)
+		log.Infof("Use postgres on %v@%v:%v/%v, timeout %v", conf.Psql.User, conf.Psql.Host, conf.Psql.Port, conf.Psql.Name, conf.Psql.Timeout.Duration)
+		client, err = psql.New(ctx, conf.Psql.Host, conf.Psql.Port, conf.Psql.Name, conf.Psql.User, conf.Psql.Password, conf.Psql.Timeout.Duration)
+	case "bolt":
+		log.Infof("Use bolt on %v:%v, timeout %v", conf.Bolt.Path, conf.Bolt.Bucket, conf.Psql.Timeout.Duration)
+		client, err = bolt.New(conf.Bolt.Path, conf.Bolt.Bucket, conf.Psql.Timeout.Duration)
+
 	default:
+		cancel()
 		log.Fatalf("Unknown kind of storage %v\n", conf.Kind)
 	}
 	if err != nil {
-		return nil, err
+		cancel()
+		return nil, errors.Wrap(err, "Can't initialize storage")
 	}
-	return &storage{client: client}, nil
-}
 
-type storage struct {
-	client client
+	if cleaner, ok := client.(clientCleaner); ok {
+		go startCleanScheduler(ctx, cleaner)
+	}
+
+	return &storage{client: client, ctx: ctx, cancel: cancel}, nil
 }
 
 func (s *storage) Save(url string, expires *time.Time) (string, error) {
@@ -50,7 +72,7 @@ func (s *storage) Save(url string, expires *time.Time) (string, error) {
 		id = rand.Uint64()
 		isUsed, err := s.client.IsUsed(id)
 		if err != nil {
-			return "", err
+			return "", errors.Wrap(err, "Can't storage save")
 		}
 		if !isUsed {
 			break
@@ -60,7 +82,7 @@ func (s *storage) Save(url string, expires *time.Time) (string, error) {
 	item := model.Item{Id: id, URL: url, Expires: expires}
 
 	if err := s.client.Create(item); err != nil {
-		return "", err
+		return "", errors.Wrap(err, "Can't storage save")
 	}
 
 	return base62.Encode(id), nil
@@ -69,7 +91,7 @@ func (s *storage) Save(url string, expires *time.Time) (string, error) {
 func (s *storage) Load(code string) (string, error) {
 	decodedId, err := base62.Decode(code)
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, "Can't storage load")
 	}
 
 	return s.client.Load(decodedId)
@@ -78,12 +100,13 @@ func (s *storage) Load(code string) (string, error) {
 func (s *storage) LoadInfo(code string) (model.Item, error) {
 	decodedId, err := base62.Decode(code)
 	if err != nil {
-		return model.Item{}, err
+		return model.Item{}, errors.Wrap(err, "Can't storage loadInfo")
 	}
 
 	return s.client.LoadInfo(decodedId)
 }
 
 func (s *storage) Close() error {
+	s.cancel()
 	return s.client.Close()
 }

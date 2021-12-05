@@ -2,21 +2,20 @@ package psql
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/sergiusd/go-scanty-url-shortener/internal/model"
 )
 
 type psql struct {
-	ctx    context.Context
-	pool   *pgxpool.Pool
-	cancel context.CancelFunc
+	ctx  context.Context
+	pool *pgxpool.Pool
 }
 
 type emptyRow struct{}
@@ -25,19 +24,15 @@ func (er emptyRow) Scan(_ ...interface{}) error {
 	return nil
 }
 
-func New(host string, port int, name, user, password string, timeout time.Duration) (*psql, error) {
-	ctx, cancel := context.WithCancel(context.Background())
-
+func New(ctx context.Context, host string, port int, name, user, password string, timeout time.Duration) (*psql, error) {
 	dbURL := fmt.Sprintf("user=%v password=%v host=%v port=%v dbname=%v sslmode=", user, password, host, port, name)
 	pool, err := pgxpool.Connect(ctx, dbURL)
 	if err != nil {
-		cancel()
 		return nil, errors.New(fmt.Sprintf("Unable to connection to database: %v\n", err))
 	}
 
 	onError := func(message string) (*psql, error) {
 		pool.Close()
-		cancel()
 		return nil, errors.New(fmt.Sprintf(message+": %v\n", err))
 	}
 
@@ -50,9 +45,7 @@ func New(host string, port int, name, user, password string, timeout time.Durati
 		return onError("Unable to roll migrations to database")
 	}
 
-	storage := &psql{ctx: ctx, pool: pool, cancel: cancel}
-
-	go startCleanScheduler(storage)
+	storage := &psql{ctx: ctx, pool: pool}
 
 	return storage, nil
 }
@@ -82,12 +75,12 @@ func (pg *psql) IsUsed(decodedId uint64) (bool, error) {
 	var isUsed bool
 	row, err := pg.queryRow("SELECT EXISTS (SELECT id FROM links WHERE id = $1)", int64(decodedId))
 	if err != nil {
-		log.Printf("Error on check item isUsed %v: %v\n", int64(decodedId), err)
+		return false, errors.Wrapf(err, "Can't select item %v\n", int64(decodedId))
 	}
 	if err := row.Scan(&isUsed); err != nil {
-		log.Printf("Error on scan check item isUsed %v: %v\n", int64(decodedId), err)
+		return false, errors.Wrapf(err, "Can't scan item %v\n", int64(decodedId))
 	}
-	return isUsed, err
+	return isUsed, nil
 }
 
 func (pg *psql) Create(item model.Item) error {
@@ -95,10 +88,7 @@ func (pg *psql) Create(item model.Item) error {
 		"INSERT INTO links (id, url, expires) VALUES ($1, $2, $3)",
 		int64(item.Id), item.URL, item.Expires,
 	)
-	if err != nil {
-		log.Printf("Error on create item %v: %v\n", item, err)
-	}
-	return err
+	return errors.Wrapf(err, "Can't insert item %v\n", item)
 }
 
 func (pg *psql) Load(decodedId uint64) (string, error) {
@@ -106,24 +96,22 @@ func (pg *psql) Load(decodedId uint64) (string, error) {
 	var expires *time.Time
 	row, err := pg.queryRow("SELECT url, expires FROM links WHERE id = $1", int64(decodedId))
 	if err != nil {
-		log.Printf("Error on load item %v: %v\n", int64(decodedId), err)
-		return "", model.ErrNoLink
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", model.ErrNoLink
+		}
+		return "", errors.Wrapf(err, "Can't select %v\n", int64(decodedId))
 	}
 	if err := row.Scan(&url, &expires); err != nil {
-		log.Printf("Error on scan load item %v: %v\n", int64(decodedId), err)
-		return "", model.ErrNoLink
+		return "", errors.Wrapf(err, "Can't scan url and expires %v\n", int64(decodedId))
 	}
-
 	if expires != nil && expires.Local().UTC().Before(time.Now().UTC()) {
-		log.Printf("Error on load item %v: expired at %v\n", int64(decodedId), *expires)
 		return "", model.ErrNoLink
 	}
-	err = pg.exec("UPDATE links SET visits = visits + 1 WHERE id = $1", int64(decodedId))
-	if err != nil {
-		log.Printf("Error on incremet visits %v: %v\n", int64(decodedId), err)
+	if err := pg.exec("UPDATE links SET visits = visits + 1 WHERE id = $1", int64(decodedId)); err != nil {
+		log.Warnf("Can't increment visits %v: %v\n", int64(decodedId), err)
 	}
 
-	return url, err
+	return url, nil
 }
 
 func (pg *psql) LoadInfo(decodedId uint64) (model.Item, error) {
@@ -132,19 +120,19 @@ func (pg *psql) LoadInfo(decodedId uint64) (model.Item, error) {
 	var visits int
 	row, err := pg.queryRow("SELECT url, expires, visits FROM links WHERE id = $1", int64(decodedId))
 	if err != nil {
-		log.Printf("Error on load item %v: %v\n", int64(decodedId), err)
-		return model.Item{}, err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.Item{}, model.ErrNoLink
+		}
+		return model.Item{}, errors.Wrapf(err, "Can't select %v\n", int64(decodedId))
 	}
 	if err := row.Scan(&url, &expires, &visits); err != nil {
-		log.Printf("Error on scan load item %v: %v\n", int64(decodedId), err)
-		return model.Item{}, err
+		return model.Item{}, errors.Wrapf(err, "Can't scan item %v\n", int64(decodedId))
 	}
 
 	return model.Item{Id: decodedId, URL: url, Expires: expires, Visits: visits}, nil
 }
 
 func (pg *psql) Close() error {
-	pg.cancel()
 	pg.pool.Close()
 	return nil
 }

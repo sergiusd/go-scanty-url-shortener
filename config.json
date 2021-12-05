@@ -1,4 +1,5 @@
 {
+  "log_level": "info",
   "server": {
     "port": "8080",
     "schema": "http",
@@ -9,7 +10,12 @@
     "idleTimeout": "10s"
   },
   "storage": {
-    "kind": "redis",
+    "kind": "bolt",
+    "bolt": {
+      "path": "data.db",
+      "bucket": "shortener",
+      "timeout": "1s"
+    },
     "redis": {
       "host": "127.0.0.1",
       "port": 6379,

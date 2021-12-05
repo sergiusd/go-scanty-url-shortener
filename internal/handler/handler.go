@@ -2,14 +2,14 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"time"
 
 	"github.com/fasthttp/router"
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
 
 	"github.com/sergiusd/go-scanty-url-shortener/internal/config"
@@ -32,7 +32,7 @@ func New(conf config.Server, storage Service) *router.Router {
 	return r
 }
 
-var createRequest struct {
+type createRequest struct {
 	URL     string  `json:"url"`
 	Expires *string `json:"expires"`
 }
@@ -54,13 +54,14 @@ func responseHandler(h func(ctx *fasthttp.RequestCtx) (interface{}, int, error))
 	return func(ctx *fasthttp.RequestCtx) {
 		data, status, err := h(ctx)
 		if err != nil {
+			log.Errorf("Can't execute handler: %+v", err)
 			data = err.Error()
 		}
 		ctx.Response.Header.Set("Content-Type", "application/json")
 		ctx.Response.SetStatusCode(status)
 		err = json.NewEncoder(ctx.Response.BodyWriter()).Encode(response{Data: data, Success: err == nil})
 		if err != nil {
-			log.Printf("could not create response to output: %v", err)
+			log.Errorf("Can't create response to output: %+v", err)
 		}
 	}
 }
@@ -71,28 +72,29 @@ func (h handler) create(ctx *fasthttp.RequestCtx) (interface{}, int, error) {
 		return nil, http.StatusForbidden, errors.New("Access denied")
 	}
 
-	if err := json.Unmarshal(ctx.PostBody(), &createRequest); err != nil {
-		return nil, http.StatusBadRequest, fmt.Errorf("Unable to info JSON request body: %v", err)
+	var request createRequest
+	if err := json.Unmarshal(ctx.PostBody(), &request); err != nil {
+		return nil, http.StatusBadRequest, errors.Wrap(err, "Unable to info JSON request body")
 	}
 
-	uri, err := url.ParseRequestURI(createRequest.URL)
+	uri, err := url.ParseRequestURI(request.URL)
 
 	if err != nil {
-		return nil, http.StatusBadRequest, fmt.Errorf("Invalid url")
+		return nil, http.StatusBadRequest, errors.New("Invalid url")
 	}
 
 	var expires *time.Time
-	if createRequest.Expires != nil {
-		exp, err := time.Parse(time.RFC3339, *createRequest.Expires)
+	if request.Expires != nil {
+		exp, err := time.Parse(time.RFC3339, *request.Expires)
 		if err != nil {
-			return nil, http.StatusBadRequest, fmt.Errorf("Invalid expiration date")
+			return nil, http.StatusBadRequest, errors.New("Invalid expiration date")
 		}
 		expires = &exp
 	}
 
 	c, err := h.storage.Save(uri.String(), expires)
 	if err != nil {
-		return nil, http.StatusInternalServerError, fmt.Errorf("Could not store in database: %v", err)
+		return nil, http.StatusInternalServerError, errors.Wrap(err, "Create handler error")
 	}
 
 	u := url.URL{
@@ -100,7 +102,7 @@ func (h handler) create(ctx *fasthttp.RequestCtx) (interface{}, int, error) {
 		Host:   h.host,
 		Path:   c}
 
-	log.Printf("Generated link: %v \n", u.String())
+	log.Infof("Generated link: %v\n", u.String())
 
 	return u.String(), http.StatusCreated, nil
 }
@@ -110,8 +112,10 @@ func (h handler) info(ctx *fasthttp.RequestCtx) (interface{}, int, error) {
 
 	item, err := h.storage.LoadInfo(code)
 	if err != nil {
-		log.Printf("Info handler error: %v", err)
-		return nil, http.StatusNotFound, fmt.Errorf("URL not found")
+		if errors.Is(err, model.ErrNoLink) {
+			return nil, http.StatusNotFound, fmt.Errorf("URL not found")
+		}
+		return nil, http.StatusInternalServerError, errors.Wrap(err, "Info handler error")
 	}
 
 	return item, http.StatusOK, nil

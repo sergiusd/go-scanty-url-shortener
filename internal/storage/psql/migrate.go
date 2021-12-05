@@ -2,9 +2,9 @@ package psql
 
 import (
 	"context"
-	"log"
 
 	"github.com/jackc/pgx/v4/pgxpool"
+	log "github.com/sirupsen/logrus"
 )
 
 func migrate(ctx context.Context, conn *pgxpool.Conn) error {
@@ -17,7 +17,7 @@ func migrate(ctx context.Context, conn *pgxpool.Conn) error {
 		return nil
 	}
 
-	log.Println("Postgresql migrates...")
+	log.Infoln("Postgresql migrates...")
 
 	if _, err := conn.Exec(ctx, `
 		CREATE TABLE public.links (

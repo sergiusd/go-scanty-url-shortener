@@ -2,11 +2,12 @@ package redis
 
 import (
 	"fmt"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"strconv"
 	"time"
 
 	redisClient "github.com/gomodule/redigo/redis"
+	"github.com/pkg/errors"
 
 	"github.com/sergiusd/go-scanty-url-shortener/internal/model"
 )
@@ -35,10 +36,14 @@ func (r *redis) IsUsed(id uint64) (bool, error) {
 	conn := r.pool.Get()
 	defer conn.Close()
 
-	return redisClient.Bool(conn.Do("EXISTS", getItemKey(id)))
+	isUsed, err := redisClient.Bool(conn.Do("EXISTS", getItemKey(id)))
+	if err != nil {
+		return false, errors.Wrap(err, "Can't get item is used")
+	}
+	return isUsed, nil
 }
 
-func (r *redis) Create(item model.Item) error {
+func (r *redis) Create(item model.Item) (err error) {
 	conn := r.pool.Get()
 	defer conn.Close()
 
@@ -48,10 +53,10 @@ func (r *redis) Create(item model.Item) error {
 	}
 	redisItem.ImportExpires(item.Expires)
 
-	_, err := conn.Do("HMSET", redisClient.Args{getItemKey(item.Id)}.AddFlat(redisItem)...)
+	_, err = conn.Do("HMSET", redisClient.Args{getItemKey(item.Id)}.AddFlat(redisItem)...)
 	if err != nil {
 		log.Printf("Error on create item %v: %v\n", redisItem, err)
-		return err
+		return errors.Wrap(err, "Can't create item")
 	}
 
 	if item.Expires != nil {
