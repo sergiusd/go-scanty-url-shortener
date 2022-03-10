@@ -50,23 +50,24 @@ func (b *bolt) bucketTtl(tx *boltClient.Tx) *boltClient.Bucket {
 	return tx.Bucket(b.bucketTTL)
 }
 
-func (b *bolt) IsUsed(id uint64) (bool, error) {
-	isUsed := false
-	err := b.db.View(func(tx *boltClient.Tx) error {
-		v := b.bucketData(tx).Get([]byte(getItemKey(id)))
-		if v != nil {
-			isUsed = true
-		}
-		return nil
-	})
-	return isUsed, errors.Wrap(err, "Can't get item is used")
-}
-
 func (b *bolt) Create(item model.Item) error {
 	itemRaw, err := json.Marshal(item)
 	if err != nil {
 		return errors.Wrap(err, "Can't marshal item")
 	}
+
+	isUsed := false
+	err = b.db.View(func(tx *boltClient.Tx) error {
+		v := b.bucketData(tx).Get([]byte(getItemKey(item.Id)))
+		if v != nil {
+			isUsed = true
+		}
+		return nil
+	})
+	if isUsed {
+		return model.ErrItemDuplicated
+	}
+
 	err = b.db.Update(func(tx *boltClient.Tx) error {
 		key := []byte(getItemKey(item.Id))
 		if err := b.bucketData(tx).Put(key, itemRaw); err != nil {

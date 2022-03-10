@@ -3,6 +3,7 @@ package psql
 import (
 	"context"
 	"fmt"
+	"github.com/jackc/pgconn"
 	"time"
 
 	"github.com/jackc/pgx/v4"
@@ -71,24 +72,19 @@ func (pg *psql) queryRow(sql string, args ...interface{}) (pgx.Row, error) {
 	return conn.QueryRow(pg.ctx, sql, args...), nil
 }
 
-func (pg *psql) IsUsed(decodedId uint64) (bool, error) {
-	var isUsed bool
-	row, err := pg.queryRow("SELECT EXISTS (SELECT id FROM links WHERE id = $1)", int64(decodedId))
-	if err != nil {
-		return false, errors.Wrapf(err, "Can't select item %v\n", int64(decodedId))
-	}
-	if err := row.Scan(&isUsed); err != nil {
-		return false, errors.Wrapf(err, "Can't scan item %v\n", int64(decodedId))
-	}
-	return isUsed, nil
-}
-
 func (pg *psql) Create(item model.Item) error {
 	err := pg.exec(
 		"INSERT INTO links (id, url, expires) VALUES ($1, $2, $3)",
 		int64(item.Id), item.URL, item.Expires,
 	)
-	return errors.Wrapf(err, "Can't insert item %v\n", item)
+	if err != nil {
+		if pgErr, ok := err.(*pgconn.PgError); ok {
+			if pgErr.Code == "23505" && pgErr.ConstraintName == "links_id_uniq" {
+				return model.ErrItemDuplicated
+			}
+		}
+	}
+	return err
 }
 
 func (pg *psql) Load(decodedId uint64) (string, error) {

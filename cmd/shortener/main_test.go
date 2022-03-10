@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +17,8 @@ import (
 
 	"github.com/sergiusd/go-scanty-url-shortener/internal/config"
 )
+
+var expires = time.Now().Add(time.Hour).Format(time.RFC3339)
 
 type response struct {
 	Success bool        `json:"success"`
@@ -34,9 +37,10 @@ func Test_App(t *testing.T) {
 	}
 
 	prefix := time.Now().Unix()
-	gorutineCount := 50
+	goroutineCount := 50
 	itemCount := 100
-	resultList := make([]string, gorutineCount*itemCount)
+	size := goroutineCount * itemCount
+	resultList := make([]string, size)
 
 	getIndex := func(g int, i int) int {
 		return g*itemCount + i
@@ -46,40 +50,46 @@ func Test_App(t *testing.T) {
 	}
 
 	wg := &sync.WaitGroup{}
-	for g := 0; g < gorutineCount; g++ {
-		wg.Add(1)
-		go func(g int) {
-			defer wg.Done()
-			for i := 0; i < itemCount; i++ {
-				shortUrl, err := createRequest(conf.Server.Port, conf.Server.Token, getUrl(g, i))
-				if err != nil {
-					panic(err)
+
+	t.Run("Create "+strconv.Itoa(size), func(t *testing.T) {
+		for g := 0; g < goroutineCount; g++ {
+			wg.Add(1)
+			go func(g int) {
+				defer wg.Done()
+				for i := 0; i < itemCount; i++ {
+					shortUrl, err := createRequest(conf.Server.Port, conf.Server.Token, getUrl(g, i))
+					if err != nil {
+						panic(err)
+					}
+					resultList[getIndex(g, i)] = shortUrl
 				}
-				resultList[getIndex(g, i)] = shortUrl
-			}
-		}(g)
-	}
-	wg.Wait()
-	for g := 0; g < gorutineCount; g++ {
-		wg.Add(1)
-		go func(g int) {
-			defer wg.Done()
-			for i := 0; i < itemCount; i++ {
-				shortUrl := resultList[getIndex(g, i)]
-				longUrl, err := redirectRequest(shortUrl)
-				if err != nil {
-					panic(err)
+			}(g)
+		}
+		wg.Wait()
+	})
+
+	t.Run("Redirect "+strconv.Itoa(size), func(t *testing.T) {
+		for g := 0; g < goroutineCount; g++ {
+			wg.Add(1)
+			go func(g int) {
+				defer wg.Done()
+				for i := 0; i < itemCount; i++ {
+					shortUrl := resultList[getIndex(g, i)]
+					longUrl, err := redirectRequest(shortUrl)
+					if err != nil {
+						panic(err)
+					}
+					assert.Equal(t, getUrl(g, i), longUrl, "short = %v", shortUrl)
 				}
-				assert.Equal(t, getUrl(g, i), longUrl, "short = %v", shortUrl)
-			}
-		}(g)
-	}
-	wg.Wait()
+			}(g)
+		}
+		wg.Wait()
+	})
 }
 
 func createRequest(port string, token string, url string) (string, error) {
 	client := &http.Client{}
-	r := bytes.NewReader([]byte(`{"url": "` + url + `"}`))
+	r := bytes.NewReader([]byte(`{"url": "` + url + `", "expires": "` + expires + `"}`))
 	req, _ := http.NewRequest("POST", "http://localhost:"+port+"/", r)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Token", token)

@@ -32,20 +32,17 @@ func getItemKey(id uint64) string {
 	return "link:" + strconv.FormatUint(id, 10)
 }
 
-func (r *redis) IsUsed(id uint64) (bool, error) {
-	conn := r.pool.Get()
-	defer conn.Close()
-
-	isUsed, err := redisClient.Bool(conn.Do("EXISTS", getItemKey(id)))
-	if err != nil {
-		return false, errors.Wrap(err, "Can't get item is used")
-	}
-	return isUsed, nil
-}
-
 func (r *redis) Create(item model.Item) (err error) {
 	conn := r.pool.Get()
 	defer conn.Close()
+
+	isUsed, err := redisClient.Bool(conn.Do("EXISTS", getItemKey(item.Id)))
+	if err != nil {
+		return errors.Wrap(err, "Can't get item is used")
+	}
+	if isUsed {
+		return model.ErrItemDuplicated
+	}
 
 	redisItem := Item{
 		Id:  item.Id,

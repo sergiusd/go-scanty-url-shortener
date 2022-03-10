@@ -23,7 +23,6 @@ type storage struct {
 }
 
 type client interface {
-	IsUsed(id uint64) (bool, error)
 	Create(item model.Item) error
 	Load(decodedId uint64) (string, error)
 	LoadInfo(decodedId uint64) (model.Item, error)
@@ -66,26 +65,21 @@ func New(conf config.Storage) (*storage, error) {
 }
 
 func (s *storage) Save(url string, expires *time.Time) (string, error) {
-	var id uint64
+	item := model.Item{URL: url, Expires: expires}
 
 	for {
-		id = rand.Uint64()
-		isUsed, err := s.client.IsUsed(id)
-		if err != nil {
-			return "", errors.Wrap(err, "Can't storage save")
-		}
-		if !isUsed {
+		item.Id = rand.Uint64()
+		err := s.client.Create(item)
+		if err == nil {
 			break
 		}
-	}
-
-	item := model.Item{Id: id, URL: url, Expires: expires}
-
-	if err := s.client.Create(item); err != nil {
+		if err == model.ErrItemDuplicated {
+			continue
+		}
 		return "", errors.Wrap(err, "Can't storage save")
 	}
 
-	return base62.Encode(id), nil
+	return base62.Encode(item.Id), nil
 }
 
 func (s *storage) Load(code string) (string, error) {
