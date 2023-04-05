@@ -67,6 +67,7 @@ func responseHandler(h func(ctx *fasthttp.RequestCtx) (interface{}, int, error))
 }
 
 func (h handler) create(ctx *fasthttp.RequestCtx) (interface{}, int, error) {
+	startAt := time.Now()
 	token := ctx.Request.Header.Peek("X-Token")
 	if string(token) != h.token {
 		return nil, http.StatusForbidden, errors.New("Access denied")
@@ -102,7 +103,7 @@ func (h handler) create(ctx *fasthttp.RequestCtx) (interface{}, int, error) {
 		Host:   h.host,
 		Path:   c}
 
-	log.Infof("Generated link: %v\n", u.String())
+	log.Infof("Generated link: %v, %v\n", u.String(), time.Now().Sub(startAt))
 
 	return u.String(), http.StatusCreated, nil
 }
