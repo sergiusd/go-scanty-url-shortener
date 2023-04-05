@@ -103,7 +103,7 @@ func (h handler) create(ctx *fasthttp.RequestCtx) (interface{}, int, error) {
 		Host:   h.host,
 		Path:   c}
 
-	log.Infof("Generated link: %v, %v\n", u.String(), time.Now().Sub(startAt))
+	log.Infof("Generated link: %v, %v", u.String(), time.Now().Sub(startAt))
 
 	return u.String(), http.StatusCreated, nil
 }

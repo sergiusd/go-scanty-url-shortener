@@ -2,6 +2,7 @@
 
 ## Configuration
 See `config.json` and `config/config.go`. Environment variable overwrited json data.
+For development environment you might use `config.local.json`
 
 ## Handlers
 

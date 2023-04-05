@@ -2,7 +2,7 @@ package config
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"os"
 
 	"github.com/caarlos0/env/v6"
 
@@ -47,16 +47,24 @@ type Storage struct {
 	} `json:"bolt"`
 }
 
-func FromFileAndEnv(path string) (*Config, error) {
-	b, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, err
+func FromFileAndEnv(mainPath string, extraPath ...string) (*Config, error) {
+	var cfg Config
+
+	allPath := []string{mainPath}
+	allPath = append(allPath, extraPath...)
+
+	for _, path := range allPath {
+		if _, err := os.Stat(path); err == nil {
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return nil, err
+			}
+			if err := json.Unmarshal(b, &cfg); err != nil {
+				return nil, err
+			}
+		}
 	}
 
-	var cfg Config
-	if err := json.Unmarshal(b, &cfg); err != nil {
-		return nil, err
-	}
 	if err := env.Parse(&cfg); err != nil {
 		return nil, err
 	}

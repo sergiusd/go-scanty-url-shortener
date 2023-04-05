@@ -15,7 +15,7 @@ import (
 func main() {
 
 	// read configuration
-	conf, err := config.FromFileAndEnv("./config.json")
+	conf, err := config.FromFileAndEnv("./config.json", "./config.local.json")
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -25,7 +25,7 @@ func main() {
 		log.Fatalln(err)
 	}
 	log.SetLevel(logLevel)
-	log.Infof("Log level: %s\n", conf.LogLevel)
+	log.Infof("Log level: %s", conf.LogLevel)
 
 	// connect to storage service
 	storageSrv, err := storage.New(conf.Storage)
@@ -48,11 +48,11 @@ func main() {
 	go func() {
 		err := server.ListenAndServe(":" + conf.Server.Port)
 		if err != nil {
-			log.Errorf("Catch server error: %v\n", err)
+			log.Errorf("Catch server error: %v", err)
 		}
 		serverError <- err
 	}()
-	log.Infof("Server started on :%v, %v / %v\n",
+	log.Infof("Server started on :%v, %v / %v",
 		conf.Server.Port, conf.Server.ReadTimeout, conf.Server.IdleTimeout)
 
 	// waiting http server error or Ctrl+C

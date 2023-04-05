@@ -29,12 +29,12 @@ func New(ctx context.Context, host string, port int, name, user, password string
 	dbURL := fmt.Sprintf("user=%v password=%v host=%v port=%v dbname=%v sslmode=", user, password, host, port, name)
 	pool, err := pgxpool.Connect(ctx, dbURL)
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("Unable to connection to database: %v\n", err))
+		return nil, errors.New(fmt.Sprintf("Unable to connection to database: %v", err))
 	}
 
 	onError := func(message string) (*psql, error) {
 		pool.Close()
-		return nil, errors.New(fmt.Sprintf(message+": %v\n", err))
+		return nil, errors.New(fmt.Sprintf(message+": %v", err))
 	}
 
 	conn, err := pool.Acquire(ctx)
@@ -54,7 +54,7 @@ func New(ctx context.Context, host string, port int, name, user, password string
 func (pg *psql) exec(sql string, args ...interface{}) error {
 	conn, err := pg.pool.Acquire(pg.ctx)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Unable to acquire a database connection: %v\n", err))
+		return errors.New(fmt.Sprintf("Unable to acquire a database connection: %v", err))
 	}
 	defer conn.Release()
 
@@ -65,7 +65,7 @@ func (pg *psql) exec(sql string, args ...interface{}) error {
 func (pg *psql) queryRow(sql string, args ...interface{}) (pgx.Row, error) {
 	conn, err := pg.pool.Acquire(pg.ctx)
 	if err != nil {
-		return emptyRow{}, errors.New(fmt.Sprintf("Unable to acquire a database connection: %v\n", err))
+		return emptyRow{}, errors.New(fmt.Sprintf("Unable to acquire a database connection: %v", err))
 	}
 	defer conn.Release()
 
@@ -95,16 +95,16 @@ func (pg *psql) Load(decodedId uint64) (string, error) {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", model.ErrNoLink
 		}
-		return "", errors.Wrapf(err, "Can't select %v\n", int64(decodedId))
+		return "", errors.Wrapf(err, "Can't select %v", int64(decodedId))
 	}
 	if err := row.Scan(&url, &expires); err != nil {
-		return "", errors.Wrapf(err, "Can't scan url and expires %v\n", int64(decodedId))
+		return "", errors.Wrapf(err, "Can't scan url and expires %v", int64(decodedId))
 	}
 	if expires != nil && expires.Local().UTC().Before(time.Now().UTC()) {
 		return "", model.ErrNoLink
 	}
 	if err := pg.exec("UPDATE links SET visits = visits + 1 WHERE id = $1", int64(decodedId)); err != nil {
-		log.Warnf("Can't increment visits %v: %v\n", int64(decodedId), err)
+		log.Warnf("Can't increment visits %v: %v", int64(decodedId), err)
 	}
 
 	return url, nil
@@ -119,10 +119,10 @@ func (pg *psql) LoadInfo(decodedId uint64) (model.Item, error) {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return model.Item{}, model.ErrNoLink
 		}
-		return model.Item{}, errors.Wrapf(err, "Can't select %v\n", int64(decodedId))
+		return model.Item{}, errors.Wrapf(err, "Can't select %v", int64(decodedId))
 	}
 	if err := row.Scan(&url, &expires, &visits); err != nil {
-		return model.Item{}, errors.Wrapf(err, "Can't scan item %v\n", int64(decodedId))
+		return model.Item{}, errors.Wrapf(err, "Can't scan item %v", int64(decodedId))
 	}
 
 	return model.Item{Id: decodedId, URL: url, Expires: expires, Visits: visits}, nil

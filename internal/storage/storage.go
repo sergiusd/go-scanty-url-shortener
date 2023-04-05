@@ -50,7 +50,7 @@ func New(conf config.Storage) (*storage, error) {
 
 	default:
 		cancel()
-		log.Fatalf("Unknown kind of storage %v\n", conf.Kind)
+		log.Fatalf("Unknown kind of storage %v", conf.Kind)
 	}
 	if err != nil {
 		cancel()

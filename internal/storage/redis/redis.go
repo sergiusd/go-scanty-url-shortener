@@ -52,14 +52,14 @@ func (r *redis) Create(item model.Item) (err error) {
 
 	_, err = conn.Do("HMSET", redisClient.Args{getItemKey(item.Id)}.AddFlat(redisItem)...)
 	if err != nil {
-		log.Printf("Error on create item %v: %v\n", redisItem, err)
+		log.Printf("Error on create item %v: %v", redisItem, err)
 		return errors.Wrap(err, "Can't create item")
 	}
 
 	if item.Expires != nil {
 		_, err = conn.Do("EXPIREAT", getItemKey(item.Id), item.Expires.Unix())
 		if err != nil {
-			log.Printf("Error on create set expires item %v: %v\n", item.Expires.Unix(), err)
+			log.Printf("Error on create set expires item %v: %v", item.Expires.Unix(), err)
 			return err
 		}
 	}
