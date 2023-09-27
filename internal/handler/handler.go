@@ -3,14 +3,15 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
 
-	"github.com/fasthttp/router"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
-	"github.com/valyala/fasthttp"
 
 	"github.com/sergiusd/go-scanty-url-shortener/internal/config"
 	"github.com/sergiusd/go-scanty-url-shortener/internal/model"
@@ -23,12 +24,20 @@ type Service interface {
 	Close() error
 }
 
-func New(conf config.Server, storage Service) *router.Router {
-	r := router.New()
+func New(conf config.Server, storage Service) http.Handler {
+	r := chi.NewRouter()
+
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Timeout(conf.ReadTimeout.Duration))
+
 	h := handler{conf.Schema, conf.Prefix, conf.Err404, storage, conf.Token}
-	r.POST("/", responseHandler(h.create))
-	r.GET("/{shortLink}/info", responseHandler(h.info))
-	r.GET("/{shortLink}", h.redirect)
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("welcome")) })
+	r.Post("/", responseHandler(h.create))
+	r.Get("/{shortLink}/info", responseHandler(h.info))
+	r.Get("/{shortLink}", h.redirect)
 	return r
 }
 
@@ -50,31 +59,35 @@ type handler struct {
 	token   string
 }
 
-func responseHandler(h func(ctx *fasthttp.RequestCtx) (interface{}, int, error)) fasthttp.RequestHandler {
-	return func(ctx *fasthttp.RequestCtx) {
-		data, status, err := h(ctx)
+func responseHandler(h func(r *http.Request) (interface{}, int, error)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		data, status, err := h(r)
 		if err != nil {
 			log.Errorf("Can't execute handler: %+v", err)
 			data = err.Error()
 		}
-		ctx.Response.Header.Set("Content-Type", "application/json")
-		ctx.Response.SetStatusCode(status)
-		err = json.NewEncoder(ctx.Response.BodyWriter()).Encode(response{Data: data, Success: err == nil})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		err = json.NewEncoder(w).Encode(response{Data: data, Success: err == nil})
 		if err != nil {
 			log.Errorf("Can't create response to output: %+v", err)
 		}
 	}
 }
 
-func (h handler) create(ctx *fasthttp.RequestCtx) (interface{}, int, error) {
+func (h handler) create(r *http.Request) (interface{}, int, error) {
 	startAt := time.Now()
-	token := ctx.Request.Header.Peek("X-Token")
-	if string(token) != h.token {
+	token := r.Header.Get("X-Token")
+	if token != h.token {
 		return nil, http.StatusForbidden, errors.New("Access denied")
 	}
 
 	var request createRequest
-	if err := json.Unmarshal(ctx.PostBody(), &request); err != nil {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, http.StatusInternalServerError, errors.Wrap(err, "Can't read body of request")
+	}
+	if err := json.Unmarshal(body, &request); err != nil {
 		return nil, http.StatusBadRequest, errors.Wrap(err, "Unable to info JSON request body")
 	}
 
@@ -108,8 +121,8 @@ func (h handler) create(ctx *fasthttp.RequestCtx) (interface{}, int, error) {
 	return u.String(), http.StatusCreated, nil
 }
 
-func (h handler) info(ctx *fasthttp.RequestCtx) (interface{}, int, error) {
-	code := ctx.UserValue("shortLink").(string)
+func (h handler) info(r *http.Request) (interface{}, int, error) {
+	code := chi.URLParam(r, "shortLink")
 
 	item, err := h.storage.LoadInfo(code)
 	if err != nil {
@@ -122,23 +135,20 @@ func (h handler) info(ctx *fasthttp.RequestCtx) (interface{}, int, error) {
 	return item, http.StatusOK, nil
 }
 
-func (h handler) redirect(ctx *fasthttp.RequestCtx) {
-	code := ctx.UserValue("shortLink").(string)
+func (h handler) redirect(w http.ResponseWriter, r *http.Request) {
+	code := chi.URLParam(r, "shortLink")
 
 	uri, err := h.storage.Load(code)
 	if err != nil {
 		if h.err404 != "" {
-			ctx.Redirect(h.err404, http.StatusMovedPermanently)
+			http.Redirect(w, r, h.err404, http.StatusMovedPermanently)
 		} else {
-			ctx.Response.Header.Set("Content-Type", "text/html")
-			ctx.Response.SetStatusCode(http.StatusNotFound)
-			fmt.Fprintf(
-				ctx.Response.BodyWriter(),
-				`<h1 style="margin-top: 150px; text-align: center; font-size: 72px;">Page not found</h1>`,
-			)
+			w.Header().Set("Content-Type", "text/html")
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`<h1 style="margin-top: 150px; text-align: center; font-size: 72px;">Page not found</h1>`))
 		}
 		return
 	}
 
-	ctx.Redirect(uri, http.StatusMovedPermanently)
+	http.Redirect(w, r, uri, http.StatusMovedPermanently)
 }
