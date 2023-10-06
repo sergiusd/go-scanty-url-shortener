@@ -1,11 +1,11 @@
 package main
 
 import (
-	"context"
-	log "github.com/sirupsen/logrus"
-	"net/http"
 	"os"
 	"os/signal"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/valyala/fasthttp"
 
 	"github.com/sergiusd/go-scanty-url-shortener/internal/config"
 	"github.com/sergiusd/go-scanty-url-shortener/internal/handler"
@@ -34,9 +34,10 @@ func main() {
 	}
 
 	// configure http server
-	server := &http.Server{
-		Addr:    ":" + conf.Server.Port,
-		Handler: handler.New(conf.Server, storageSrv),
+	server := &fasthttp.Server{
+		Handler:     handler.New(conf.Server, storageSrv).Handler,
+		ReadTimeout: conf.Server.ReadTimeout.Duration,
+		IdleTimeout: conf.Server.IdleTimeout.Duration,
 	}
 
 	stop := make(chan os.Signal, 1)
@@ -45,7 +46,7 @@ func main() {
 	// start server
 	serverError := make(chan error)
 	go func() {
-		err := server.ListenAndServe()
+		err := server.ListenAndServe(":" + conf.Server.Port)
 		if err != nil {
 			log.Errorf("Catch server error: %v", err)
 		}
@@ -64,7 +65,7 @@ func main() {
 	case <-stop:
 		log.Infoln("Ctrl+C pressed")
 		_ = storageSrv.Close()
-		_ = server.Shutdown(context.Background())
+		_ = server.Shutdown()
 		<-serverError // waiting server shutdown
 		log.Infoln("Server stopped")
 		return
