@@ -68,8 +68,9 @@ func (s *storage) Save(url string, expires *time.Time) (string, error) {
 	item := model.Item{URL: url, Expires: expires}
 	collisionCount := 0
 
+	r := rand.New(rand.NewSource(time.Now().Unix()))
 	for {
-		item.Id = rand.Uint64()
+		item.Id = r.Uint64()
 		err := s.client.Create(item)
 		if err == nil {
 			break
