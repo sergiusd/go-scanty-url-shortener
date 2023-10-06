@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	logger "github.com/chi-middleware/logrus-logger"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"io"
@@ -11,10 +12,9 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
-
 	"github.com/sergiusd/go-scanty-url-shortener/internal/config"
 	"github.com/sergiusd/go-scanty-url-shortener/internal/model"
+	log "github.com/sirupsen/logrus"
 )
 
 type Service interface {
@@ -27,9 +27,11 @@ type Service interface {
 func New(conf config.Server, storage Service) http.Handler {
 	r := chi.NewRouter()
 
+	routerLogger := log.New()
+
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
+	r.Use(logger.Logger("router", routerLogger))
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(conf.ReadTimeout.Duration))
 
@@ -106,17 +108,21 @@ func (h handler) create(r *http.Request) (interface{}, int, error) {
 		expires = &exp
 	}
 
+	startStorageAt := time.Now()
 	c, err := h.storage.Save(uri.String(), expires)
 	if err != nil {
 		return nil, http.StatusInternalServerError, errors.Wrap(err, "Create handler error")
 	}
+	durationStorage := time.Now().Sub(startStorageAt)
 
 	u := url.URL{
 		Scheme: h.schema,
 		Host:   h.host,
-		Path:   c}
+		Path:   c,
+	}
 
-	log.Infof("Generated link: %v, %v", u.String(), time.Now().Sub(startAt))
+	duration := time.Now().Sub(startAt)
+	log.Infof("Generated link: %v, duration: %v, storage: %v", u.String(), duration, durationStorage)
 
 	return u.String(), http.StatusCreated, nil
 }

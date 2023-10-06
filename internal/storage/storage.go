@@ -73,7 +73,8 @@ func (s *storage) Save(url string, expires *time.Time) (string, error) {
 		if err == nil {
 			break
 		}
-		if err == model.ErrItemDuplicated {
+		if errors.Is(err, model.ErrItemDuplicated) {
+			log.Warnf("Collision on save unique short URL name")
 			continue
 		}
 		return "", errors.Wrap(err, "Can't storage save")
