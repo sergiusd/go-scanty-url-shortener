@@ -66,6 +66,7 @@ func New(conf config.Storage) (*storage, error) {
 
 func (s *storage) Save(url string, expires *time.Time) (string, error) {
 	item := model.Item{URL: url, Expires: expires}
+	collisionCount := 0
 
 	for {
 		item.Id = rand.Uint64()
@@ -74,10 +75,14 @@ func (s *storage) Save(url string, expires *time.Time) (string, error) {
 			break
 		}
 		if errors.Is(err, model.ErrItemDuplicated) {
-			log.Warnf("Collision on save unique short URL name")
+			collisionCount += 1
 			continue
 		}
 		return "", errors.Wrap(err, "Can't storage save")
+	}
+
+	if collisionCount != 0 {
+		log.Warnf("Collision on save unique short URL name: %v times", collisionCount)
 	}
 
 	return base62.Encode(item.Id), nil
