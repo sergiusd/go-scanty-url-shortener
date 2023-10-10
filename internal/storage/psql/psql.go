@@ -132,3 +132,29 @@ func (pg *psql) Close() error {
 	pg.pool.Close()
 	return nil
 }
+
+func (pg *psql) Stat(ctx context.Context) (any, error) {
+	s := pg.pool.Stat()
+	s.AcquireCount()
+	return struct {
+		AcquireCount         int64         `json:"acquireCount"`
+		AcquireDuration      time.Duration `json:"acquireDuration"`
+		AcquiredConns        int32         `json:"acquiredConns"`
+		CanceledAcquireCount int64         `json:"canceledAcquireCount"`
+		EmptyAcquireCount    int64         `json:"emptyAcquireCount"`
+		ConstructingConns    int32         `json:"constructingConns"`
+		IdleConns            int32         `json:"idleConns"`
+		MaxConns             int32         `json:"maxConns"`
+		TotalConns           int32         `json:"totalConns"`
+	}{
+		AcquireCount:         s.AcquireCount(),
+		AcquireDuration:      s.AcquireDuration(),
+		AcquiredConns:        s.AcquiredConns(),
+		CanceledAcquireCount: s.CanceledAcquireCount(),
+		EmptyAcquireCount:    s.EmptyAcquireCount(),
+		ConstructingConns:    s.ConstructingConns(),
+		IdleConns:            s.IdleConns(),
+		MaxConns:             s.MaxConns(),
+		TotalConns:           s.TotalConns(),
+	}, nil
+}

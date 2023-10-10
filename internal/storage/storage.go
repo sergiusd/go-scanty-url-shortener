@@ -27,6 +27,7 @@ type client interface {
 	Load(decodedId uint64) (string, error)
 	LoadInfo(decodedId uint64) (model.Item, error)
 	Close() error
+	Stat(ctx context.Context) (interface{}, error)
 }
 
 type clientCleaner interface {
@@ -66,17 +67,24 @@ func New(conf config.Storage) (*storage, error) {
 
 func (s *storage) Save(url string, expires *time.Time) (string, error) {
 	item := model.Item{URL: url, Expires: expires}
+	collisionCount := 0
 
+	r := rand.New(rand.NewSource(time.Now().Unix()))
 	for {
-		item.Id = rand.Uint64()
+		item.Id = r.Uint64()
 		err := s.client.Create(item)
 		if err == nil {
 			break
 		}
-		if err == model.ErrItemDuplicated {
+		if errors.Is(err, model.ErrItemDuplicated) {
+			collisionCount += 1
 			continue
 		}
 		return "", errors.Wrap(err, "Can't storage save")
+	}
+
+	if collisionCount != 0 {
+		log.Warnf("Collision on save unique short URL name: %v times", collisionCount)
 	}
 
 	return base62.Encode(item.Id), nil
@@ -103,4 +111,8 @@ func (s *storage) LoadInfo(code string) (model.Item, error) {
 func (s *storage) Close() error {
 	s.cancel()
 	return s.client.Close()
+}
+
+func (s *storage) Stat(ctx context.Context) (any, error) {
+	return s.client.Stat(ctx)
 }
