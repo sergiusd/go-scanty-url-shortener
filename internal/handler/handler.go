@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	logger "github.com/chi-middleware/logrus-logger"
@@ -9,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"runtime"
 	"time"
 
 	"github.com/pkg/errors"
@@ -22,6 +24,7 @@ type Service interface {
 	Load(string) (string, error)
 	LoadInfo(string) (model.Item, error)
 	Close() error
+	Stat(ctx context.Context) (any, error)
 }
 
 func New(conf config.Server, storage Service) http.Handler {
@@ -36,7 +39,7 @@ func New(conf config.Server, storage Service) http.Handler {
 	r.Use(middleware.Timeout(conf.ReadTimeout.Duration))
 
 	h := handler{conf.Schema, conf.Prefix, conf.Err404, storage, conf.Token}
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("welcome")) })
+	r.Get("/health", h.health)
 	r.Post("/", responseHandler(h.create))
 	r.Get("/{shortLink}/info", responseHandler(h.info))
 	r.Get("/{shortLink}", h.redirect)
@@ -75,6 +78,41 @@ func responseHandler(h func(r *http.Request) (interface{}, int, error)) http.Han
 			log.Errorf("Can't create response to output: %+v", err)
 		}
 	}
+}
+
+func (h handler) health(w http.ResponseWriter, r *http.Request) {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	memoryStat := struct {
+		Alloc      string `json:"alloc"`
+		TotalAlloc string `json:"totalAlloc"`
+		Sys        string `json:"sys"`
+		NumGC      uint32 `json:"numGC"`
+	}{
+		Alloc:      fmt.Sprintf("%v MiB", m.Alloc/1024/1024),
+		TotalAlloc: fmt.Sprintf("%v MiB", m.TotalAlloc/1024/1024),
+		Sys:        fmt.Sprintf("%v MiB", m.Sys/1024/1024),
+		NumGC:      m.NumGC,
+	}
+	storageStat, err := h.storage.Stat(r.Context())
+	if err != nil {
+		h.sendHtmlError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	bytes, err := json.Marshal(struct {
+		Memory       any `json:"memory"`
+		NumGoroutine int `json:"numGoroutine"`
+		Storage      any `json:"storage"`
+	}{
+		Memory:       memoryStat,
+		NumGoroutine: runtime.NumGoroutine(),
+		Storage:      storageStat,
+	})
+	if err != nil {
+		h.sendHtmlError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Write(bytes)
 }
 
 func (h handler) create(r *http.Request) (interface{}, int, error) {
@@ -157,4 +195,10 @@ func (h handler) redirect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, uri, http.StatusMovedPermanently)
+}
+
+func (h handler) sendHtmlError(w http.ResponseWriter, message string, code int) {
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(code)
+	w.Write([]byte(message))
 }

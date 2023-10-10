@@ -1,6 +1,7 @@
 package redis
 
 import (
+	"context"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"strconv"
@@ -109,4 +110,8 @@ func (r *redis) LoadInfo(decodedId uint64) (model.Item, error) {
 
 func (r *redis) Close() error {
 	return r.pool.Close()
+}
+
+func (r *redis) Stat(ctx context.Context) (any, error) {
+	return "Not implemented", nil
 }

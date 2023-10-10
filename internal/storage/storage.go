@@ -27,6 +27,7 @@ type client interface {
 	Load(decodedId uint64) (string, error)
 	LoadInfo(decodedId uint64) (model.Item, error)
 	Close() error
+	Stat(ctx context.Context) (interface{}, error)
 }
 
 type clientCleaner interface {
@@ -110,4 +111,8 @@ func (s *storage) LoadInfo(code string) (model.Item, error) {
 func (s *storage) Close() error {
 	s.cancel()
 	return s.client.Close()
+}
+
+func (s *storage) Stat(ctx context.Context) (any, error) {
+	return s.client.Stat(ctx)
 }

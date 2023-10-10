@@ -1,6 +1,7 @@
 package bolt
 
 import (
+	"context"
 	"encoding/json"
 	"strconv"
 	"time"
@@ -118,4 +119,8 @@ func (b *bolt) LoadInfo(decodedId uint64) (model.Item, error) {
 
 func (b *bolt) Close() error {
 	return b.db.Close()
+}
+
+func (b *bolt) Stat(ctx context.Context) (any, error) {
+	return "Not implemented", nil
 }
