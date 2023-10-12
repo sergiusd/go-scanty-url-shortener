@@ -8,7 +8,7 @@ COPY go.sum .
 RUN go mod download
 
 COPY . .
-RUN go mod tidy && go build -o shortener ./cmd/shortener/main.go
+RUN go mod tidy && go build -ldflags '-w -extldflags "-static"' -o shortener ./cmd/shortener/main.go
 
 
 FROM alpine:3.16
