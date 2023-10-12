@@ -1,4 +1,4 @@
-FROM golang:1.21.3-alpine3.17 as builder
+FROM golang:1.20.4-alpine3.16 as builder
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ COPY . .
 RUN go mod tidy && go build -o shortener ./cmd/shortener/main.go
 
 
-FROM alpine:3.17
+FROM alpine:3.16
 EXPOSE 8080
 RUN adduser -D -H -h /app shortener && \
     mkdir -p /app  && \
