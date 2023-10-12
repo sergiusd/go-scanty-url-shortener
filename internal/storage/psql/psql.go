@@ -133,10 +133,30 @@ func (pg *psql) Close() error {
 	return nil
 }
 
+func (pg *psql) ping() (time.Duration, error) {
+	conn, err := pg.pool.Acquire(pg.ctx)
+	if err != nil {
+		return 0, errors.New(fmt.Sprintf("Unable to acquire a database connection: %v", err))
+	}
+	defer conn.Release()
+	t := time.Now()
+	row, err := pg.queryRow("SELECT 1")
+	result := 0
+	if err := row.Scan(&result); err != nil {
+		return 0, errors.Wrapf(err, "Can't scan on ping")
+	}
+	return t.Sub(t), err
+}
+
 func (pg *psql) Stat(ctx context.Context) (any, error) {
+	pingDuration, err := pg.ping()
+	if err != nil {
+		return nil, errors.Wrapf(err, "Can't ping postgres")
+	}
+
 	s := pg.pool.Stat()
-	s.AcquireCount()
 	return struct {
+		PingDuration         time.Duration `json:"pingDuration"`
 		AcquireCount         int64         `json:"acquireCount"`
 		AcquireDuration      time.Duration `json:"acquireDuration"`
 		AcquiredConns        int32         `json:"acquiredConns"`
@@ -147,6 +167,7 @@ func (pg *psql) Stat(ctx context.Context) (any, error) {
 		MaxConns             int32         `json:"maxConns"`
 		TotalConns           int32         `json:"totalConns"`
 	}{
+		PingDuration:         pingDuration,
 		AcquireCount:         s.AcquireCount(),
 		AcquireDuration:      s.AcquireDuration(),
 		AcquiredConns:        s.AcquiredConns(),
