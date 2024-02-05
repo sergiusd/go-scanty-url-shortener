@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/bluele/gcache"
 	log "github.com/sirupsen/logrus"
 	"net/http"
 	"os"
@@ -33,10 +34,13 @@ func main() {
 		log.Fatalln(err)
 	}
 
+	cache := gcache.New(conf.Cache.Size).ARC().Build()
+	log.Infof("Cache size: %v", conf.Cache.Size)
+
 	// configure http server
 	server := &http.Server{
 		Addr:    ":" + conf.Server.Port,
-		Handler: handler.New(conf.Server, storageSrv),
+		Handler: handler.New(conf.Server, storageSrv, cache),
 	}
 
 	stop := make(chan os.Signal, 1)

@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/bluele/gcache"
 	logger "github.com/chi-middleware/logrus-logger"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/sergiusd/go-scanty-url-shortener/internal/base62"
 	"io"
 	"net/http"
 	"net/url"
 	"runtime"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
@@ -19,15 +22,20 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type Service interface {
+type IService interface {
 	Save(string, *time.Time) (string, error)
-	Load(string) (string, error)
+	Load(id uint64) (string, error)
 	LoadInfo(string) (model.Item, error)
 	Close() error
 	Stat(ctx context.Context) (any, error)
 }
 
-func New(conf config.Server, storage Service) http.Handler {
+type ICache interface {
+	Set(key, value any) error
+	Get(key any) (any, error)
+}
+
+func New(conf config.Server, storage IService, cache ICache) http.Handler {
 	r := chi.NewRouter()
 
 	routerLogger := log.New()
@@ -38,7 +46,14 @@ func New(conf config.Server, storage Service) http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(conf.ReadTimeout.Duration))
 
-	h := handler{conf.Schema, conf.Prefix, conf.Err404, storage, conf.Token}
+	h := handler{
+		schema:  conf.Schema,
+		host:    conf.Prefix,
+		err404:  conf.Err404,
+		storage: storage,
+		token:   conf.Token,
+		cache:   cache,
+	}
 	r.Get("/health", h.health)
 	r.Post("/", responseHandler(h.create))
 	r.Get("/{shortLink}/info", responseHandler(h.info))
@@ -57,11 +72,14 @@ type response struct {
 }
 
 type handler struct {
-	schema  string
-	host    string
-	err404  string
-	storage Service
-	token   string
+	schema        string
+	host          string
+	err404        string
+	storage       IService
+	token         string
+	cache         ICache
+	cacheSetCount atomic.Uint64
+	cacheGetCount atomic.Uint64
 }
 
 func responseHandler(h func(r *http.Request) (interface{}, int, error)) http.HandlerFunc {
@@ -80,19 +98,27 @@ func responseHandler(h func(r *http.Request) (interface{}, int, error)) http.Han
 	}
 }
 
-func (h handler) health(w http.ResponseWriter, r *http.Request) {
+func (h *handler) health(w http.ResponseWriter, r *http.Request) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
+	cacheGetCount := float64(h.cacheGetCount.Load())
+	cacheSetCount := float64(h.cacheSetCount.Load())
+	cacheHitRate := 0.0
+	if cacheSetCount != 0 || cacheGetCount != 0 {
+		cacheHitRate = cacheGetCount / (cacheSetCount + cacheGetCount) * 100
+	}
 	memoryStat := struct {
 		Alloc      string `json:"alloc"`
 		TotalAlloc string `json:"totalAlloc"`
 		Sys        string `json:"sys"`
 		NumGC      uint32 `json:"numGC"`
+		Cache      string `json:"cache"`
 	}{
 		Alloc:      fmt.Sprintf("%v MiB", m.Alloc/1024/1024),
 		TotalAlloc: fmt.Sprintf("%v MiB", m.TotalAlloc/1024/1024),
 		Sys:        fmt.Sprintf("%v MiB", m.Sys/1024/1024),
 		NumGC:      m.NumGC,
+		Cache:      fmt.Sprintf("Get %v, Set %v, Hit rate: %.4f%%", cacheGetCount, cacheSetCount, cacheHitRate),
 	}
 	storageStat, err := h.storage.Stat(r.Context())
 	if err != nil {
@@ -112,10 +138,10 @@ func (h handler) health(w http.ResponseWriter, r *http.Request) {
 		h.sendHtmlError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Write(bytes)
+	_, _ = w.Write(bytes)
 }
 
-func (h handler) create(r *http.Request) (interface{}, int, error) {
+func (h *handler) create(r *http.Request) (interface{}, int, error) {
 	startAt := time.Now()
 	token := r.Header.Get("X-Token")
 	if token != h.token {
@@ -165,7 +191,7 @@ func (h handler) create(r *http.Request) (interface{}, int, error) {
 	return u.String(), http.StatusCreated, nil
 }
 
-func (h handler) info(r *http.Request) (interface{}, int, error) {
+func (h *handler) info(r *http.Request) (interface{}, int, error) {
 	code := chi.URLParam(r, "shortLink")
 
 	item, err := h.storage.LoadInfo(code)
@@ -179,17 +205,28 @@ func (h handler) info(r *http.Request) (interface{}, int, error) {
 	return item, http.StatusOK, nil
 }
 
-func (h handler) redirect(w http.ResponseWriter, r *http.Request) {
+func (h *handler) redirect(w http.ResponseWriter, r *http.Request) {
 	code := chi.URLParam(r, "shortLink")
 
-	uri, err := h.storage.Load(code)
+	decodedId, err := base62.Decode(code)
+	if err != nil {
+		h.sendHtmlError(
+			w,
+			`<h1 style="margin-top: 150px; text-align: center; font-size: 72px;">Can't decode code</h1>`,
+			http.StatusInternalServerError,
+		)
+	}
+
+	uri, err := h.getUriById(decodedId)
 	if err != nil {
 		if h.err404 != "" {
 			http.Redirect(w, r, h.err404, http.StatusMovedPermanently)
 		} else {
-			w.Header().Set("Content-Type", "text/html")
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte(`<h1 style="margin-top: 150px; text-align: center; font-size: 72px;">Page not found</h1>`))
+			h.sendHtmlError(
+				w,
+				`<h1 style="margin-top: 150px; text-align: center; font-size: 72px;">Page not found</h1>`,
+				http.StatusNotFound,
+			)
 		}
 		return
 	}
@@ -197,8 +234,29 @@ func (h handler) redirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, uri, http.StatusMovedPermanently)
 }
 
-func (h handler) sendHtmlError(w http.ResponseWriter, message string, code int) {
+func (h *handler) getUriById(id uint64) (string, error) {
+	cachedUri, err := h.cache.Get(id)
+	if err == nil {
+		h.cacheGetCount.Store(h.cacheGetCount.Add(1))
+		log.Infof("Cache get %v", h.cacheGetCount.Load())
+		return cachedUri.(string), nil
+	}
+	if !errors.Is(err, gcache.KeyNotFoundError) {
+		log.Errorf("Error on get long url from cache for %v: %v", id, err)
+	}
+	uri, err := h.storage.Load(id)
+	if err != nil {
+		return "", errors.Wrap(err, "Can't get uri from storage")
+	}
+	if err := h.cache.Set(id, uri); err != nil {
+		log.Errorf("Error on set long url to cache for %v: %v", id, err)
+	}
+	h.cacheSetCount.Store(h.cacheSetCount.Add(1))
+	return uri, err
+}
+
+func (h *handler) sendHtmlError(w http.ResponseWriter, message string, code int) {
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(code)
-	w.Write([]byte(message))
+	_, _ = w.Write([]byte(message))
 }

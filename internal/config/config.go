@@ -13,6 +13,7 @@ type Config struct {
 	LogLevel string `json:"log_level" env:"SHORTENER_LOG_LEVEL"`
 	Server   `json:"server"`
 	Storage  `json:"storage"`
+	Cache    `json:"cache"`
 }
 
 type Server struct {
@@ -45,6 +46,10 @@ type Storage struct {
 		Bucket  string `json:"bucket" env:"SHORTENER_BOLT_BUCKET"`
 		Timeout string `json:"timeout" env:"SHORTENER_BOLT_TIMEOUT"`
 	} `json:"bolt"`
+}
+
+type Cache struct {
+	Size int `json:"size" env:"SHORTENER_CACHE_SIZE"`
 }
 
 func FromFileAndEnv(mainPath string, extraPath ...string) (*Config, error) {

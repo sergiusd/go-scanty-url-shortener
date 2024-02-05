@@ -16,7 +16,7 @@ import (
 	"github.com/sergiusd/go-scanty-url-shortener/internal/storage/redis"
 )
 
-type storage struct {
+type Storage struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	client client
@@ -34,7 +34,7 @@ type clientCleaner interface {
 	CleanExpired() error
 }
 
-func New(conf config.Storage) (*storage, error) {
+func New(conf config.Storage) (*Storage, error) {
 	var err error
 	var client client
 	ctx, cancel := context.WithCancel(context.Background())
@@ -62,12 +62,12 @@ func New(conf config.Storage) (*storage, error) {
 		go startCleanScheduler(ctx, cleaner)
 	}
 
-	return &storage{client: client, ctx: ctx, cancel: cancel}, nil
+	return &Storage{client: client, ctx: ctx, cancel: cancel}, nil
 }
 
 var r = rand.New(rand.NewSource(time.Now().Unix()))
 
-func (s *storage) Save(url string, expires *time.Time) (string, error) {
+func (s *Storage) Save(url string, expires *time.Time) (string, error) {
 	item := model.Item{URL: url, Expires: expires}
 	collisionCount := 0
 
@@ -91,16 +91,11 @@ func (s *storage) Save(url string, expires *time.Time) (string, error) {
 	return base62.Encode(item.Id), nil
 }
 
-func (s *storage) Load(code string) (string, error) {
-	decodedId, err := base62.Decode(code)
-	if err != nil {
-		return "", errors.Wrap(err, "Can't storage load")
-	}
-
-	return s.client.Load(decodedId)
+func (s *Storage) Load(id uint64) (string, error) {
+	return s.client.Load(id)
 }
 
-func (s *storage) LoadInfo(code string) (model.Item, error) {
+func (s *Storage) LoadInfo(code string) (model.Item, error) {
 	decodedId, err := base62.Decode(code)
 	if err != nil {
 		return model.Item{}, errors.Wrap(err, "Can't storage loadInfo")
@@ -109,11 +104,11 @@ func (s *storage) LoadInfo(code string) (model.Item, error) {
 	return s.client.LoadInfo(decodedId)
 }
 
-func (s *storage) Close() error {
+func (s *Storage) Close() error {
 	s.cancel()
 	return s.client.Close()
 }
 
-func (s *storage) Stat(ctx context.Context) (any, error) {
+func (s *Storage) Stat(ctx context.Context) (any, error) {
 	return s.client.Stat(ctx)
 }

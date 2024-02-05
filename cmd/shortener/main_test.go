@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -75,9 +75,12 @@ func Test_App(t *testing.T) {
 				defer wg.Done()
 				for i := 0; i < itemCount; i++ {
 					shortUrl := resultList[getIndex(g, i)]
-					longUrl, err := redirectRequest(shortUrl)
-					if err != nil {
-						panic(err)
+					longUrl := ""
+					for r := 0; r < repeatCount; r++ {
+						longUrl, err = redirectRequest(shortUrl)
+						if err != nil {
+							panic(err)
+						}
 					}
 					assert.Equal(t, getUrl(g, i), longUrl, "short = %v", shortUrl)
 				}
@@ -98,7 +101,7 @@ func createRequest(port string, token string, url string) (string, error) {
 		return "", err
 	}
 	// Read body
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	defer resp.Body.Close()
 	if err != nil {
 		return "", err

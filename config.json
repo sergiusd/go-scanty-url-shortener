@@ -9,6 +9,9 @@
     "readTimeout": "1s",
     "idleTimeout": "10s"
   },
+  "cache": {
+    "size": 10000
+  },
   "storage": {
     "kind": "bolt",
     "bolt": {
