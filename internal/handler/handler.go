@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/url"
 	"runtime"
-	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
@@ -33,6 +32,10 @@ type IService interface {
 type ICache interface {
 	Set(key, value any) error
 	Get(key any) (any, error)
+	HitRate() float64
+	HitCount() uint64
+	MissCount() uint64
+	LookupCount() uint64
 }
 
 func New(conf config.Server, storage IService, cache ICache) http.Handler {
@@ -72,14 +75,33 @@ type response struct {
 }
 
 type handler struct {
-	schema        string
-	host          string
-	err404        string
-	storage       IService
-	token         string
-	cache         ICache
-	cacheSetCount atomic.Uint64
-	cacheGetCount atomic.Uint64
+	schema  string
+	host    string
+	err404  string
+	storage IService
+	token   string
+	cache   ICache
+}
+
+type health struct {
+	Memory       healthMemory `json:"memory"`
+	Cache        healthCache  `json:"cache"`
+	NumGoroutine int          `json:"numGoroutine"`
+	Storage      any          `json:"storage"`
+}
+
+type healthMemory struct {
+	Alloc      string `json:"alloc"`
+	TotalAlloc string `json:"totalAlloc"`
+	Sys        string `json:"sys"`
+	NumGC      uint32 `json:"numGC"`
+}
+
+type healthCache struct {
+	LookupCount uint64 `json:"lookupCount"`
+	HitCount    uint64 `json:"hitCount"`
+	MissCount   uint64 `json:"missCount"`
+	HitRate     string `json:"hitRate"`
 }
 
 func responseHandler(h func(r *http.Request) (interface{}, int, error)) http.HandlerFunc {
@@ -101,36 +123,26 @@ func responseHandler(h func(r *http.Request) (interface{}, int, error)) http.Han
 func (h *handler) health(w http.ResponseWriter, r *http.Request) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	cacheGetCount := float64(h.cacheGetCount.Load())
-	cacheSetCount := float64(h.cacheSetCount.Load())
-	cacheHitRate := 0.0
-	if cacheSetCount != 0 || cacheGetCount != 0 {
-		cacheHitRate = cacheGetCount / (cacheSetCount + cacheGetCount) * 100
-	}
-	memoryStat := struct {
-		Alloc      string `json:"alloc"`
-		TotalAlloc string `json:"totalAlloc"`
-		Sys        string `json:"sys"`
-		NumGC      uint32 `json:"numGC"`
-		Cache      string `json:"cache"`
-	}{
+	memoryStat := healthMemory{
 		Alloc:      fmt.Sprintf("%v MiB", m.Alloc/1024/1024),
 		TotalAlloc: fmt.Sprintf("%v MiB", m.TotalAlloc/1024/1024),
 		Sys:        fmt.Sprintf("%v MiB", m.Sys/1024/1024),
 		NumGC:      m.NumGC,
-		Cache:      fmt.Sprintf("Get %v, Set %v, Hit rate: %.4f%%", cacheGetCount, cacheSetCount, cacheHitRate),
+	}
+	cacheStat := healthCache{
+		LookupCount: h.cache.LookupCount(),
+		HitCount:    h.cache.HitCount(),
+		MissCount:   h.cache.MissCount(),
+		HitRate:     fmt.Sprintf("%.4f%%", h.cache.HitRate()*100),
 	}
 	storageStat, err := h.storage.Stat(r.Context())
 	if err != nil {
 		h.sendHtmlError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	bytes, err := json.Marshal(struct {
-		Memory       any `json:"memory"`
-		NumGoroutine int `json:"numGoroutine"`
-		Storage      any `json:"storage"`
-	}{
+	bytes, err := json.Marshal(health{
 		Memory:       memoryStat,
+		Cache:        cacheStat,
 		NumGoroutine: runtime.NumGoroutine(),
 		Storage:      storageStat,
 	})
@@ -237,7 +249,6 @@ func (h *handler) redirect(w http.ResponseWriter, r *http.Request) {
 func (h *handler) getUriById(id uint64) (string, error) {
 	cachedUri, err := h.cache.Get(id)
 	if err == nil {
-		h.cacheGetCount.Store(h.cacheGetCount.Add(1))
 		return cachedUri.(string), nil
 	}
 	if !errors.Is(err, gcache.KeyNotFoundError) {
@@ -250,7 +261,6 @@ func (h *handler) getUriById(id uint64) (string, error) {
 	if err := h.cache.Set(id, uri); err != nil {
 		log.Errorf("Error on set long url to cache for %v: %v", id, err)
 	}
-	h.cacheSetCount.Store(h.cacheSetCount.Add(1))
 	return uri, err
 }
 
