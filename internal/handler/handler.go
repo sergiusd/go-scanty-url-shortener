@@ -238,7 +238,6 @@ func (h *handler) getUriById(id uint64) (string, error) {
 	cachedUri, err := h.cache.Get(id)
 	if err == nil {
 		h.cacheGetCount.Store(h.cacheGetCount.Add(1))
-		log.Infof("Cache get %v", h.cacheGetCount.Load())
 		return cachedUri.(string), nil
 	}
 	if !errors.Is(err, gcache.KeyNotFoundError) {
