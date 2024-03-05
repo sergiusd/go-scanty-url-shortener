@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/sergiusd/go-scanty-url-shortener/internal/base62"
+	"github.com/sergiusd/go-scanty-url-shortener/internal/metrics"
 	"io"
 	"net/http"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sergiusd/go-scanty-url-shortener/internal/config"
 	"github.com/sergiusd/go-scanty-url-shortener/internal/model"
 	log "github.com/sirupsen/logrus"
@@ -49,6 +51,8 @@ func New(conf config.Server, storage IService, cache ICache) http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(conf.ReadTimeout.Duration))
 
+	prometheusHandler := promhttp.Handler()
+
 	h := handler{
 		schema:  conf.Schema,
 		host:    conf.Prefix,
@@ -61,6 +65,9 @@ func New(conf config.Server, storage IService, cache ICache) http.Handler {
 	r.Post("/", responseHandler(h.create))
 	r.Get("/{shortLink}/info", responseHandler(h.info))
 	r.Get("/{shortLink}", h.redirect)
+	r.Get("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		prometheusHandler.ServeHTTP(w, r)
+	})
 	return r
 }
 
@@ -154,6 +161,9 @@ func (h *handler) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) create(r *http.Request) (interface{}, int, error) {
+	metricStop := metrics.StartHistogramTimer(metrics.GenerateHistogram)
+	defer metricStop()
+
 	startAt := time.Now()
 	token := r.Header.Get("X-Token")
 	if token != h.token {
@@ -218,6 +228,16 @@ func (h *handler) info(r *http.Request) (interface{}, int, error) {
 }
 
 func (h *handler) redirect(w http.ResponseWriter, r *http.Request) {
+	metricStop := metrics.StartHistogramFactoryTimer()
+	useCache := false
+	defer func() {
+		histogram := metrics.ViewNoCacheHistogram
+		if useCache {
+			histogram = metrics.ViewCacheHistogram
+		}
+		metricStop(histogram)
+	}()
+
 	code := chi.URLParam(r, "shortLink")
 
 	decodedId, err := base62.Decode(code)
@@ -229,7 +249,8 @@ func (h *handler) redirect(w http.ResponseWriter, r *http.Request) {
 		)
 	}
 
-	uri, err := h.getUriById(decodedId)
+	uri, useCache, err := h.getUriById(decodedId)
+
 	if err != nil {
 		if h.err404 != "" {
 			http.Redirect(w, r, h.err404, http.StatusMovedPermanently)
@@ -246,22 +267,22 @@ func (h *handler) redirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, uri, http.StatusMovedPermanently)
 }
 
-func (h *handler) getUriById(id uint64) (string, error) {
+func (h *handler) getUriById(id uint64) (string, bool, error) {
 	cachedUri, err := h.cache.Get(id)
 	if err == nil {
-		return cachedUri.(string), nil
+		return cachedUri.(string), true, nil
 	}
 	if !errors.Is(err, gcache.KeyNotFoundError) {
 		log.Errorf("Error on get long url from cache for %v: %v", id, err)
 	}
 	uri, err := h.storage.Load(id)
 	if err != nil {
-		return "", errors.Wrap(err, "Can't get uri from storage")
+		return "", false, errors.Wrap(err, "Can't get uri from storage")
 	}
 	if err := h.cache.Set(id, uri); err != nil {
 		log.Errorf("Error on set long url to cache for %v: %v", id, err)
 	}
-	return uri, err
+	return uri, false, err
 }
 
 func (h *handler) sendHtmlError(w http.ResponseWriter, message string, code int) {
