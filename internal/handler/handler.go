@@ -51,7 +51,7 @@ func New(conf config.Server, storage IService, cache ICache) http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(conf.ReadTimeout.Duration))
 
-	prometheusHandler := promhttp.Handler()
+	prometheusHandler := promhttp.HandlerFor(metrics.Registry, promhttp.HandlerOpts{})
 
 	h := handler{
 		schema:  conf.Schema,
