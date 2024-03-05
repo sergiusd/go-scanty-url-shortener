@@ -62,12 +62,12 @@ func New(conf config.Server, storage IService, cache ICache) http.Handler {
 		cache:   cache,
 	}
 	r.Get("/health", h.health)
-	r.Post("/", responseHandler(h.create))
-	r.Get("/{shortLink}/info", responseHandler(h.info))
-	r.Get("/{shortLink}", h.redirect)
 	r.Get("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		prometheusHandler.ServeHTTP(w, r)
 	})
+	r.Post("/", responseHandler(h.create))
+	r.Get("/{shortLink}/info", responseHandler(h.info))
+	r.Get("/{shortLink}", h.redirect)
 	return r
 }
 
