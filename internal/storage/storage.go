@@ -24,6 +24,7 @@ type Storage struct {
 
 type client interface {
 	Create(item model.Item) error
+	Find(url string) (uint64, error)
 	Load(decodedId uint64) (string, error)
 	LoadInfo(decodedId uint64) (model.Item, error)
 	Close() error
@@ -67,7 +68,17 @@ func New(conf config.Storage) (*Storage, error) {
 
 var r = rand.New(rand.NewSource(time.Now().Unix()))
 
-func (s *Storage) Save(url string, expires *time.Time) (string, error) {
+func (s *Storage) Save(url string, expires *time.Time, tryFindExists bool) (string, error) {
+	if tryFindExists {
+		id, err := s.client.Find(url)
+		if err != nil {
+			return "", errors.Wrap(err, "Can't storage try find exists")
+		}
+		if id != 0 {
+			return base62.Encode(id), nil
+		}
+	}
+
 	item := model.Item{URL: url, Expires: expires}
 	collisionCount := 0
 

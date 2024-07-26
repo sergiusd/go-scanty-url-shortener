@@ -87,6 +87,21 @@ func (pg *psql) Create(item model.Item) error {
 	return err
 }
 
+func (pg *psql) Find(url string) (uint64, error) {
+	row, err := pg.queryRow("SELECT id FROM links WHERE url = $1", url)
+	if err != nil {
+		return 0, errors.Wrapf(err, "Can't find %v", url)
+	}
+	var id int64
+	if err := row.Scan(&id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, errors.Wrapf(err, "Can't scan id %v", url)
+	}
+	return uint64(id), nil
+}
+
 func (pg *psql) Load(decodedId uint64) (string, error) {
 	var url string
 	var expires *time.Time

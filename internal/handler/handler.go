@@ -24,7 +24,7 @@ import (
 )
 
 type IService interface {
-	Save(string, *time.Time) (string, error)
+	Save(string, *time.Time, bool) (string, error)
 	Load(id uint64) (string, error)
 	LoadInfo(string) (model.Item, error)
 	Close() error
@@ -72,8 +72,9 @@ func New(conf config.Server, storage IService, cache ICache) http.Handler {
 }
 
 type createRequest struct {
-	URL     string  `json:"url"`
-	Expires *string `json:"expires"`
+	URL           string  `json:"url"`
+	TryFindExists *bool   `json:"tryFindExists"`
+	Expires       *string `json:"expires"`
 }
 
 type response struct {
@@ -194,8 +195,13 @@ func (h *handler) create(r *http.Request) (interface{}, int, error) {
 		expires = &exp
 	}
 
+	var tryFindExists bool
+	if request.TryFindExists != nil {
+		tryFindExists = *request.TryFindExists
+	}
+
 	startStorageAt := time.Now()
-	c, err := h.storage.Save(uri.String(), expires)
+	c, err := h.storage.Save(uri.String(), expires, tryFindExists)
 	if err != nil {
 		return nil, http.StatusInternalServerError, errors.Wrap(err, "Create handler error")
 	}

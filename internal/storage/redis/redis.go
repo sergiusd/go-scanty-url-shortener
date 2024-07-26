@@ -68,6 +68,10 @@ func (r *redis) Create(item model.Item) (err error) {
 	return nil
 }
 
+func (r *redis) Find(url string) (uint64, error) {
+	return 0, fmt.Errorf("Not implemented")
+}
+
 func (r *redis) Load(decodedId uint64) (string, error) {
 	conn := r.pool.Get()
 	defer conn.Close()

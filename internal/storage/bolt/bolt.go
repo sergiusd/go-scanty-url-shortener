@@ -3,6 +3,7 @@ package bolt
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -83,6 +84,10 @@ func (b *bolt) Create(item model.Item) error {
 		return nil
 	})
 	return errors.Wrap(err, "Can't create item")
+}
+
+func (b *bolt) Find(url string) (uint64, error) {
+	return 0, fmt.Errorf("Not implemented")
 }
 
 func (b *bolt) Load(decodedId uint64) (string, error) {
