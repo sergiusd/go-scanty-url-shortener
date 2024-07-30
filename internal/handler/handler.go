@@ -214,7 +214,11 @@ func (h *handler) create(r *http.Request) (interface{}, int, error) {
 	}
 
 	duration := time.Now().Sub(startAt)
-	log.Infof("Generated link: %v, duration: %v, storage: %v", u.String(), duration, durationStorage)
+	action := "Generated link"
+	if tryFindExists {
+		action = "Try find or generated link"
+	}
+	log.Infof("%v: %v, duration: %v, storage: %v", u.String(), action, duration, durationStorage)
 
 	return u.String(), http.StatusCreated, nil
 }
