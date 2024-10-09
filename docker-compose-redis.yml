@@ -14,6 +14,8 @@ services:
       - redis
   redis:
     image: redis:4.0
+    ports:
+      - 6379:6379
     command: [ "redis-server", "--maxmemory", "1gb", "--appendonly", "yes"]
     container_name: shortener-redis
     environment:

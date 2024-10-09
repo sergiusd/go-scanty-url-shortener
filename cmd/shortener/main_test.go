@@ -46,6 +46,7 @@ func Test_App(t *testing.T) {
 	prefix := time.Now().Unix()
 	goroutineCount := 50
 	itemCount := 100
+	repeatCount := 2
 	size := goroutineCount * itemCount
 	resultList := make([]string, size)
 

@@ -3,7 +3,6 @@ package redis
 import (
 	"context"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"strconv"
 	"time"
 
@@ -12,6 +11,29 @@ import (
 
 	"github.com/sergiusd/go-scanty-url-shortener/internal/model"
 )
+
+const errorDuplicate = "Duplicate"
+
+const checkAndSetScript = `
+local key = KEYS[1]
+local id = ARGV[2]
+local url = ARGV[3]
+local expires = ARGV[4]
+
+local exists = redis.call('EXISTS', key)
+
+if exists == 0 then
+    redis.call('HMSET', key, 'id', id, 'url', url)
+
+    if expires then
+        redis.call('EXPIREAT', key, expires)
+    end
+
+    return "Ok"
+else
+    return "` + errorDuplicate + `"
+end
+`
 
 type redis struct {
 	pool *redisClient.Pool
@@ -37,32 +59,19 @@ func (r *redis) Create(item model.Item) (err error) {
 	conn := r.pool.Get()
 	defer conn.Close()
 
-	isUsed, err := redisClient.Bool(conn.Do("EXISTS", getItemKey(item.Id)))
-	if err != nil {
-		return errors.Wrap(err, "Can't get item is used")
+	args := []any{
+		checkAndSetScript, 1, getItemKey(item.Id), item.Id, item.URL,
 	}
-	if isUsed {
-		return model.ErrItemDuplicated
-	}
-
-	redisItem := Item{
-		Id:  item.Id,
-		URL: item.URL,
-	}
-	redisItem.ImportExpires(item.Expires)
-
-	_, err = conn.Do("HMSET", redisClient.Args{getItemKey(item.Id)}.AddFlat(redisItem)...)
-	if err != nil {
-		log.Printf("Error on create item %v: %v", redisItem, err)
-		return errors.Wrap(err, "Can't create item")
-	}
-
 	if item.Expires != nil {
-		_, err = conn.Do("EXPIREAT", getItemKey(item.Id), item.Expires.Unix())
-		if err != nil {
-			log.Printf("Error on create set expires item %v: %v", item.Expires.Unix(), err)
-			return err
-		}
+		args = append(args, item.Expires.Unix())
+	}
+
+	result, err := redisClient.String(conn.Do("EVAL", args...))
+	if err != nil {
+		return errors.Wrap(err, "Error executing Lua script for check and set item")
+	}
+	if result == errorDuplicate {
+		return model.ErrItemDuplicated
 	}
 
 	return nil
@@ -82,8 +91,6 @@ func (r *redis) Load(decodedId uint64) (string, error) {
 	} else if len(urlString) == 0 {
 		return "", model.ErrNoLink
 	}
-
-	_, err = conn.Do("HINCRBY", getItemKey(decodedId), "visits", 1)
 
 	return urlString, nil
 }
