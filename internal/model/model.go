@@ -10,7 +10,6 @@ type Item struct {
 	Id      uint64     `json:"id" redis:"id"`
 	URL     string     `json:"url" redis:"url"`
 	Expires *time.Time `json:"expires" redis:"expires"`
-	Visits  int        `json:"visits" redis:"visits"`
 }
 
 type Duration struct {

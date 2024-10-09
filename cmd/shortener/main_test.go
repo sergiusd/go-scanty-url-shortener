@@ -31,10 +31,17 @@ func Test_App(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	conf, err := config.FromFileAndEnv(wd + "/../../config.json")
+	conf, err := config.FromFileAndEnv(wd+"/../../config.local.json", wd+"/../../config.json")
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	host := "http://localhost"
+	if envHost := os.Getenv("SHORTENER_SERVER_HOST"); envHost != "" {
+		host = envHost
+	}
+	endpoint := host + ":" + conf.Server.Port
+	token := conf.Server.Token
 
 	prefix := time.Now().Unix()
 	goroutineCount := 50
@@ -57,7 +64,7 @@ func Test_App(t *testing.T) {
 			go func(g int) {
 				defer wg.Done()
 				for i := 0; i < itemCount; i++ {
-					shortUrl, err := createRequest(conf.Server.Port, conf.Server.Token, getUrl(g, i))
+					shortUrl, err := createRequest(endpoint, token, getUrl(g, i))
 					if err != nil {
 						panic(err)
 					}
@@ -68,7 +75,7 @@ func Test_App(t *testing.T) {
 		wg.Wait()
 	})
 
-	t.Run("Redirect "+strconv.Itoa(size), func(t *testing.T) {
+	t.Run(fmt.Sprintf("Redirect %v x %v", size, repeatCount), func(t *testing.T) {
 		for g := 0; g < goroutineCount; g++ {
 			wg.Add(1)
 			go func(g int) {
@@ -90,10 +97,10 @@ func Test_App(t *testing.T) {
 	})
 }
 
-func createRequest(port string, token string, url string) (string, error) {
+func createRequest(endpoint string, token string, url string) (string, error) {
 	client := &http.Client{}
 	r := bytes.NewReader([]byte(`{"url": "` + url + `", "expires": "` + expires + `"}`))
-	req, _ := http.NewRequest("POST", "http://localhost:"+port+"/", r)
+	req, _ := http.NewRequest("POST", endpoint+"/", r)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Token", token)
 	resp, err := client.Do(req)

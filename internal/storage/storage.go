@@ -26,7 +26,6 @@ type client interface {
 	Create(item model.Item) error
 	Find(url string) (uint64, error)
 	Load(decodedId uint64) (string, error)
-	LoadInfo(decodedId uint64) (model.Item, error)
 	Close() error
 	Stat(ctx context.Context) (interface{}, error)
 }
@@ -104,15 +103,6 @@ func (s *Storage) Save(url string, expires *time.Time, tryFindExists bool) (stri
 
 func (s *Storage) Load(id uint64) (string, error) {
 	return s.client.Load(id)
-}
-
-func (s *Storage) LoadInfo(code string) (model.Item, error) {
-	decodedId, err := base62.Decode(code)
-	if err != nil {
-		return model.Item{}, errors.Wrap(err, "Can't storage loadInfo")
-	}
-
-	return s.client.LoadInfo(decodedId)
 }
 
 func (s *Storage) Close() error {

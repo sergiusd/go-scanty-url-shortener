@@ -19,14 +19,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sergiusd/go-scanty-url-shortener/internal/config"
-	"github.com/sergiusd/go-scanty-url-shortener/internal/model"
 	log "github.com/sirupsen/logrus"
 )
 
 type IService interface {
 	Save(string, *time.Time, bool) (string, error)
 	Load(id uint64) (string, error)
-	LoadInfo(string) (model.Item, error)
 	Close() error
 	Stat(ctx context.Context) (any, error)
 }
@@ -66,7 +64,6 @@ func New(conf config.Server, storage IService, cache ICache) http.Handler {
 		prometheusHandler.ServeHTTP(w, r)
 	})
 	r.Post("/", responseHandler(h.create))
-	r.Get("/{shortLink}/info", responseHandler(h.info))
 	r.Get("/{shortLink}", h.redirect)
 	return r
 }
@@ -221,20 +218,6 @@ func (h *handler) create(r *http.Request) (interface{}, int, error) {
 	log.Infof("%v: %v, duration: %v, storage: %v", u.String(), action, duration, durationStorage)
 
 	return u.String(), http.StatusCreated, nil
-}
-
-func (h *handler) info(r *http.Request) (interface{}, int, error) {
-	code := chi.URLParam(r, "shortLink")
-
-	item, err := h.storage.LoadInfo(code)
-	if err != nil {
-		if errors.Is(err, model.ErrNoLink) {
-			return nil, http.StatusNotFound, fmt.Errorf("URL not found")
-		}
-		return nil, http.StatusInternalServerError, errors.Wrap(err, "Info handler error")
-	}
-
-	return item, http.StatusOK, nil
 }
 
 func (h *handler) redirect(w http.ResponseWriter, r *http.Request) {

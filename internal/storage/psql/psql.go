@@ -9,8 +9,6 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
-
 	"github.com/sergiusd/go-scanty-url-shortener/internal/model"
 )
 
@@ -118,29 +116,8 @@ func (pg *psql) Load(decodedId uint64) (string, error) {
 	if expires != nil && expires.Local().UTC().Before(time.Now().UTC()) {
 		return "", model.ErrNoLink
 	}
-	if err := pg.exec("UPDATE links SET visits = visits + 1 WHERE id = $1", int64(decodedId)); err != nil {
-		log.Warnf("Can't increment visits %v: %v", int64(decodedId), err)
-	}
 
 	return url, nil
-}
-
-func (pg *psql) LoadInfo(decodedId uint64) (model.Item, error) {
-	var url string
-	var expires *time.Time
-	var visits int
-	row, err := pg.queryRow("SELECT url, expires, visits FROM links WHERE id = $1", int64(decodedId))
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return model.Item{}, model.ErrNoLink
-		}
-		return model.Item{}, errors.Wrapf(err, "Can't select %v", int64(decodedId))
-	}
-	if err := row.Scan(&url, &expires, &visits); err != nil {
-		return model.Item{}, errors.Wrapf(err, "Can't scan item %v", int64(decodedId))
-	}
-
-	return model.Item{Id: decodedId, URL: url, Expires: expires, Visits: visits}, nil
 }
 
 func (pg *psql) Close() error {

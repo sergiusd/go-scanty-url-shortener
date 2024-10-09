@@ -88,30 +88,6 @@ func (r *redis) Load(decodedId uint64) (string, error) {
 	return urlString, nil
 }
 
-func (r *redis) LoadInfo(decodedId uint64) (model.Item, error) {
-	conn := r.pool.Get()
-	defer conn.Close()
-
-	values, err := redisClient.Values(conn.Do("HGETALL", getItemKey(decodedId)))
-	if err != nil {
-		return model.Item{}, err
-	} else if len(values) == 0 {
-		return model.Item{}, model.ErrNoLink
-	}
-	var redisItem Item
-	err = redisClient.ScanStruct(values, &redisItem)
-	if err != nil {
-		return model.Item{}, err
-	}
-
-	return model.Item{
-		Id:      decodedId,
-		URL:     redisItem.URL,
-		Expires: redisItem.ExportExpires(),
-		Visits:  redisItem.Visits,
-	}, nil
-}
-
 func (r *redis) Close() error {
 	return r.pool.Close()
 }

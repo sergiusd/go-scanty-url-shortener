@@ -8,7 +8,6 @@ type Item struct {
 	Id      uint64 `redis:"id"`
 	URL     string `redis:"url"`
 	Expires string `redis:"expires"`
-	Visits  int    `redis:"visits"`
 }
 
 func (i *Item) ExportExpires() *time.Time {

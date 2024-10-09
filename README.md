@@ -17,12 +17,6 @@ Create new shortest link:
     or
     {"success":false,"data":"Could not store in database: dial tcp: lookup 127.0.0.1 on 192.168.1.1:53: no such host"}
 
-Information about the item:
-
-    curl localhost:8081/O8KEZlAseeb/info
-    {"success":true,"data":{"id":894385949183117216,"url":"http://ya.ru","expires":null,"visits":0}}
-
-
 Redirect short link to original:
 
     curl localhost:8080/O8KEZlAseeb -v

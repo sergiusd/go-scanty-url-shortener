@@ -107,21 +107,6 @@ func (b *bolt) Load(decodedId uint64) (string, error) {
 	return url, errors.Wrapf(err, "Can't load item %v", decodedId)
 }
 
-func (b *bolt) LoadInfo(decodedId uint64) (model.Item, error) {
-	var item model.Item
-	err := b.db.View(func(tx *boltClient.Tx) error {
-		v := b.bucketData(tx).Get([]byte(getItemKey(decodedId)))
-		if v == nil {
-			return model.ErrNoLink
-		}
-		if err := json.Unmarshal(v, &item); err != nil {
-			return errors.Wrapf(err, "Can't found item by key %v", decodedId)
-		}
-		return nil
-	})
-	return item, errors.Wrapf(err, "Can't loadInfo item %v", decodedId)
-}
-
 func (b *bolt) Close() error {
 	return b.db.Close()
 }
