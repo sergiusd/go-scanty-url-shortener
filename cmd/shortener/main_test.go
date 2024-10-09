@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -77,24 +78,26 @@ func Test_App(t *testing.T) {
 	})
 
 	t.Run(fmt.Sprintf("Redirect %v x %v", size, repeatCount), func(t *testing.T) {
+		errorCount := atomic.Int32{}
 		for g := 0; g < goroutineCount; g++ {
 			wg.Add(1)
 			go func(g int) {
 				defer wg.Done()
 				for i := 0; i < itemCount; i++ {
 					shortUrl := resultList[getIndex(g, i)]
-					longUrl := ""
 					for r := 0; r < repeatCount; r++ {
-						longUrl, err = redirectRequest(shortUrl)
+						longUrl, err := redirectRequest(shortUrl)
 						if err != nil {
-							panic(err)
+							errorCount.Add(1)
+							continue
 						}
+						assert.Equal(t, getUrl(g, i), longUrl, "short = %v", shortUrl)
 					}
-					assert.Equal(t, getUrl(g, i), longUrl, "short = %v", shortUrl)
 				}
 			}(g)
 		}
 		wg.Wait()
+		assert.Equal(t, int32(0), errorCount.Load())
 	})
 }
 
