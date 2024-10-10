@@ -30,6 +30,7 @@
       "user": "postgres",
       "password": "",
       "name": "shortener",
+      "poolSize": 10,
       "timeout": "1s"
     }
   }

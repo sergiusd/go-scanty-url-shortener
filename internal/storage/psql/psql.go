@@ -4,15 +4,15 @@ import (
 	"context"
 	"fmt"
 	"github.com/jackc/pgconn"
+	"github.com/jackc/pgx/v5"
 	"time"
 
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pkg/errors"
 	"github.com/sergiusd/go-scanty-url-shortener/internal/model"
 )
 
-type psql struct {
+type Psql struct {
 	ctx  context.Context
 	pool *pgxpool.Pool
 }
@@ -23,14 +23,22 @@ func (er emptyRow) Scan(_ ...interface{}) error {
 	return nil
 }
 
-func New(ctx context.Context, host string, port int, name, user, password string, timeout time.Duration) (*psql, error) {
+func New(ctx context.Context, host string, port int, name, user, password string, poolSize int32, timeout time.Duration) (*Psql, error) {
 	dbURL := fmt.Sprintf("user=%v password=%v host=%v port=%v dbname=%v sslmode=", user, password, host, port, name)
-	pool, err := pgxpool.Connect(ctx, dbURL)
+	config, err := pgxpool.ParseConfig(dbURL)
+	if err != nil {
+		panic(err)
+	}
+	if poolSize != 0 {
+		config.MaxConns = poolSize
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		return nil, errors.New(fmt.Sprintf("Unable to connection to database: %v", err))
 	}
 
-	onError := func(message string) (*psql, error) {
+	onError := func(message string) (*Psql, error) {
 		pool.Close()
 		return nil, errors.New(fmt.Sprintf(message+": %v", err))
 	}
@@ -44,12 +52,12 @@ func New(ctx context.Context, host string, port int, name, user, password string
 		return onError("Unable to roll migrations to database")
 	}
 
-	storage := &psql{ctx: ctx, pool: pool}
+	storage := &Psql{ctx: ctx, pool: pool}
 
 	return storage, nil
 }
 
-func (pg *psql) exec(sql string, args ...interface{}) error {
+func (pg *Psql) exec(sql string, args ...interface{}) error {
 	conn, err := pg.pool.Acquire(pg.ctx)
 	if err != nil {
 		return errors.New(fmt.Sprintf("Unable to acquire a database connection: %v", err))
@@ -60,7 +68,7 @@ func (pg *psql) exec(sql string, args ...interface{}) error {
 	return err
 }
 
-func (pg *psql) queryRow(sql string, args ...interface{}) (pgx.Row, error) {
+func (pg *Psql) queryRow(sql string, args ...interface{}) (pgx.Row, error) {
 	conn, err := pg.pool.Acquire(pg.ctx)
 	if err != nil {
 		return emptyRow{}, errors.New(fmt.Sprintf("Unable to acquire a database connection: %v", err))
@@ -70,7 +78,7 @@ func (pg *psql) queryRow(sql string, args ...interface{}) (pgx.Row, error) {
 	return conn.QueryRow(pg.ctx, sql, args...), nil
 }
 
-func (pg *psql) Create(item model.Item) error {
+func (pg *Psql) Create(item model.Item) error {
 	err := pg.exec(
 		"INSERT INTO links (id, url, expires) VALUES ($1, $2, $3)",
 		int64(item.Id), item.URL, item.Expires,
@@ -85,7 +93,7 @@ func (pg *psql) Create(item model.Item) error {
 	return err
 }
 
-func (pg *psql) Find(url string) (uint64, error) {
+func (pg *Psql) Find(url string) (uint64, error) {
 	row, err := pg.queryRow("SELECT id FROM links WHERE url = $1", url)
 	if err != nil {
 		return 0, errors.Wrapf(err, "Can't find %v", url)
@@ -100,7 +108,7 @@ func (pg *psql) Find(url string) (uint64, error) {
 	return uint64(id), nil
 }
 
-func (pg *psql) Load(decodedId uint64) (string, error) {
+func (pg *Psql) Load(decodedId uint64) (string, error) {
 	var url string
 	var expires *time.Time
 	row, err := pg.queryRow("SELECT url, expires FROM links WHERE id = $1", int64(decodedId))
@@ -120,12 +128,12 @@ func (pg *psql) Load(decodedId uint64) (string, error) {
 	return url, nil
 }
 
-func (pg *psql) Close() error {
+func (pg *Psql) Close() error {
 	pg.pool.Close()
 	return nil
 }
 
-func (pg *psql) ping() (time.Duration, error) {
+func (pg *Psql) ping() (time.Duration, error) {
 	conn, err := pg.pool.Acquire(pg.ctx)
 	if err != nil {
 		return 0, errors.New(fmt.Sprintf("Unable to acquire a database connection: %v", err))
@@ -140,7 +148,7 @@ func (pg *psql) ping() (time.Duration, error) {
 	return t.Sub(t), err
 }
 
-func (pg *psql) Stat(ctx context.Context) (any, error) {
+func (pg *Psql) Stat(ctx context.Context) (any, error) {
 	pingDuration, err := pg.ping()
 	if err != nil {
 		return nil, errors.Wrapf(err, "Can't ping postgres")

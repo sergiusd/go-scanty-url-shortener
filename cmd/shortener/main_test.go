@@ -78,7 +78,8 @@ func Test_App(t *testing.T) {
 	})
 
 	t.Run(fmt.Sprintf("Redirect %v x %v", size, repeatCount), func(t *testing.T) {
-		errorCount := atomic.Int32{}
+		errorCount1 := atomic.Int32{}
+		errorCount2 := atomic.Int32{}
 		for g := 0; g < goroutineCount; g++ {
 			wg.Add(1)
 			go func(g int) {
@@ -88,7 +89,11 @@ func Test_App(t *testing.T) {
 					for r := 0; r < repeatCount; r++ {
 						longUrl, err := redirectRequest(shortUrl)
 						if err != nil {
-							errorCount.Add(1)
+							if r == 0 {
+								errorCount1.Add(1)
+							} else {
+								errorCount2.Add(1)
+							}
 							continue
 						}
 						assert.Equal(t, getUrl(g, i), longUrl, "short = %v", shortUrl)
@@ -97,7 +102,8 @@ func Test_App(t *testing.T) {
 			}(g)
 		}
 		wg.Wait()
-		assert.Equal(t, int32(0), errorCount.Load())
+		assert.Equal(t, int32(0), errorCount1.Load(), "First requests errors")
+		assert.Equal(t, int32(0), errorCount2.Load(), "Repeated requests errors")
 	})
 }
 
@@ -121,7 +127,7 @@ func createRequest(endpoint string, token string, url string) (string, error) {
 	var msg response
 	err = json.Unmarshal(b, &msg)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("Can't parse response '"+string(b)+"': %w", err)
 	}
 	if !msg.Success {
 		return "", errors.New(msg.Data.(string))

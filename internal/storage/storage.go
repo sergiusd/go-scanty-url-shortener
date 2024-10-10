@@ -43,8 +43,8 @@ func New(conf config.Storage) (*Storage, error) {
 		log.Infof("Use redis on %v:%v", conf.Redis.Host, conf.Redis.Port)
 		client, err = redis.New(conf.Redis.Host, conf.Redis.Port, conf.Redis.Password)
 	case "psql":
-		log.Infof("Use postgres on %v@%v:%v/%v, timeout %v", conf.Psql.User, conf.Psql.Host, conf.Psql.Port, conf.Psql.Name, conf.Psql.Timeout.Duration)
-		client, err = psql.New(ctx, conf.Psql.Host, conf.Psql.Port, conf.Psql.Name, conf.Psql.User, conf.Psql.Password, conf.Psql.Timeout.Duration)
+		log.Infof("Use postgres on %v@%v:%v/%v, pool %v, timeout %v", conf.Psql.User, conf.Psql.Host, conf.Psql.Port, conf.Psql.Name, conf.Psql.PoolSize, conf.Psql.Timeout.Duration)
+		client, err = psql.New(ctx, conf.Psql.Host, conf.Psql.Port, conf.Psql.Name, conf.Psql.User, conf.Psql.Password, conf.Psql.PoolSize, conf.Psql.Timeout.Duration)
 	case "bolt":
 		log.Infof("Use bolt on %v:%v, timeout %v", conf.Bolt.Path, conf.Bolt.Bucket, conf.Psql.Timeout.Duration)
 		client, err = bolt.New(conf.Bolt.Path, conf.Bolt.Bucket, conf.Psql.Timeout.Duration)
@@ -87,7 +87,7 @@ func (s *Storage) Save(url string, expires *time.Time, tryFindExists bool) (stri
 		if err == nil {
 			break
 		}
-		if errors.Is(err, model.ErrItemDuplicated) {
+		if errors.As(err, model.ErrItemDuplicated) {
 			collisionCount += 1
 			continue
 		}

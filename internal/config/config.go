@@ -39,6 +39,7 @@ type Storage struct {
 		User     string         `json:"user" env:"SHORTENER_PSQL_USER"`
 		Password string         `json:"password" env:"SHORTENER_PSQL_PASSWORD"`
 		Name     string         `json:"name" env:"SHORTENER_PSQL_NAME"`
+		PoolSize int32          `json:"poolSize" env:"SHORTENER_PSQL_POOL_SIZE"`
 		Timeout  model.Duration `json:"timeout" env:"SHORTENER_PSQL_TIMEOUT"`
 	} `json:"psql"`
 	Bolt struct {
