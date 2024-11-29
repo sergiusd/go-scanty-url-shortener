@@ -87,7 +87,7 @@ func (s *Storage) Save(url string, expires *time.Time, tryFindExists bool) (stri
 		if err == nil {
 			break
 		}
-		if errors.As(err, model.ErrItemDuplicated) {
+		if errors.Is(err, model.ErrItemDuplicated) {
 			collisionCount += 1
 			continue
 		}
