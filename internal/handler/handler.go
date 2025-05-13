@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -255,6 +256,15 @@ func (h *handler) redirect(w http.ResponseWriter, r *http.Request) {
 			)
 		}
 		return
+	}
+
+	query := r.URL.RawQuery
+	if query != "" {
+		glue := "?"
+		if strings.Contains(uri, "?") {
+			glue = "&"
+		}
+		uri = uri + glue + query
 	}
 
 	http.Redirect(w, r, uri, http.StatusMovedPermanently)

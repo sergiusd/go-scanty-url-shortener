@@ -24,6 +24,11 @@ Redirect short link to original:
     < HTTP/1.1 301 Moved Permanently
     < Location: http://ya.ru/
 
+    curl localhost:8080/O8KEZlAseeb?param=some -v
+    ...
+    < HTTP/1.1 301 Moved Permanently
+    < Location: http://ya.ru/?param=some
+
 ## Build
 
     docker build -t shortener:last .
