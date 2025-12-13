@@ -3,9 +3,10 @@ package psql
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v5"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pkg/errors"
@@ -85,7 +86,7 @@ func (pg *Psql) Create(item model.Item) error {
 	)
 	if err != nil {
 		if pgErr, ok := err.(*pgconn.PgError); ok {
-			if pgErr.Code == "23505" && pgErr.ConstraintName == "links_id_uniq" {
+			if pgErr.Code == "23505" /*&& pgErr.ConstraintName == "links_id_uniq"*/ {
 				return model.ErrItemDuplicated
 			}
 		}

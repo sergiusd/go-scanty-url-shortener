@@ -82,6 +82,9 @@ func (s *Storage) Save(url string, expires *time.Time, tryFindExists bool) (stri
 	collisionCount := 0
 
 	for {
+		if collisionCount > 1000 {
+			return "", errors.New("Collission happened more than 1000 times")
+		}
 		item.Id = r.Uint64()
 		err := s.client.Create(item)
 		if err == nil {
