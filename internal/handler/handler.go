@@ -204,7 +204,7 @@ func (h *handler) create(r *http.Request) (interface{}, int, error) {
 	if err != nil {
 		return nil, http.StatusInternalServerError, errors.Wrap(err, "Create handler error")
 	}
-	durationStorage := time.Now().Sub(startStorageAt)
+	durationStorage := time.Since(startStorageAt)
 
 	u := url.URL{
 		Scheme: h.schema,
@@ -212,7 +212,7 @@ func (h *handler) create(r *http.Request) (interface{}, int, error) {
 		Path:   c,
 	}
 
-	duration := time.Now().Sub(startAt)
+	duration := time.Since(startAt)
 	action := "Generated link"
 	if tryFindExists {
 		action = "Try find or generated link"

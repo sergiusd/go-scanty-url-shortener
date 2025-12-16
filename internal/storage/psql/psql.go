@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v5"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pkg/errors"
@@ -85,10 +86,19 @@ func (pg *Psql) Create(item model.Item) error {
 		int64(item.Id), item.URL, item.Expires,
 	)
 	if err != nil {
-		if pgErr, ok := err.(*pgconn.PgError); ok {
-			if pgErr.Code == "23505" /*&& pgErr.ConstraintName == "links_id_uniq"*/ {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			if pgErr.Code == "23505" && pgErr.ConstraintName == "links_id_uniq" {
 				return model.ErrItemDuplicated
 			}
+
+			log.Infof(
+				"pg error: code=%s constraint=%s detail=%s message=%s",
+				pgErr.Code,
+				pgErr.ConstraintName,
+				pgErr.Detail,
+				pgErr.Message,
+			)
 		}
 	}
 	return err
