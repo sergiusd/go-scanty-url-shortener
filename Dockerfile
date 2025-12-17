@@ -1,4 +1,4 @@
-FROM golang:1.25-alpine3.18 as builder
+FROM golang:1.23-alpine3.20 as builder
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ COPY . .
 RUN go mod tidy && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -ldflags '-w -extldflags "-static"' -o shortener ./cmd/shortener/main.go
 
 
-FROM alpine:3.18
+FROM alpine:3.20
 EXPOSE 8080
 RUN adduser -D -H -h /app shortener && \
   mkdir -p /app  && \
