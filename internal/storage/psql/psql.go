@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v5"
-	log "github.com/sirupsen/logrus"
-
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pkg/errors"
 	"github.com/sergiusd/go-scanty-url-shortener/internal/model"
@@ -91,14 +89,6 @@ func (pg *Psql) Create(item model.Item) error {
 			if pgErr.Code == "23505" && pgErr.ConstraintName == "links_id_uniq" {
 				return model.ErrItemDuplicated
 			}
-
-			log.Infof(
-				"pg error: code=%s constraint=%s detail=%s message=%s",
-				pgErr.Code,
-				pgErr.ConstraintName,
-				pgErr.Detail,
-				pgErr.Message,
-			)
 		}
 	}
 	return err
