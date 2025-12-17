@@ -1,6 +1,6 @@
 module github.com/sergiusd/go-scanty-url-shortener
 
-go 1.25
+go 1.24.0
 
 require (
 	github.com/bluele/gcache v0.0.2
