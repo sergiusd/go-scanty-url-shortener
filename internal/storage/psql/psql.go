@@ -17,12 +17,6 @@ type Psql struct {
 	pool *pgxpool.Pool
 }
 
-type emptyRow struct{}
-
-func (er emptyRow) Scan(_ ...interface{}) error {
-	return nil
-}
-
 func New(ctx context.Context, host string, port int, name, user, password string, poolSize int32, timeout time.Duration) (*Psql, error) {
 	dbURL := fmt.Sprintf("user=%v password=%v host=%v port=%v dbname=%v sslmode=", user, password, host, port, name)
 	config, err := pgxpool.ParseConfig(dbURL)
@@ -69,13 +63,8 @@ func (pg *Psql) exec(sql string, args ...interface{}) error {
 }
 
 func (pg *Psql) queryRow(sql string, args ...interface{}) (pgx.Row, error) {
-	conn, err := pg.pool.Acquire(pg.ctx)
-	if err != nil {
-		return emptyRow{}, errors.New(fmt.Sprintf("Unable to acquire a database connection: %v", err))
-	}
-	defer conn.Release()
-
-	return conn.QueryRow(pg.ctx, sql, args...), nil
+	row := pg.pool.QueryRow(pg.ctx, sql, args...)
+	return row, nil
 }
 
 func (pg *Psql) Create(item model.Item) error {
@@ -95,10 +84,7 @@ func (pg *Psql) Create(item model.Item) error {
 }
 
 func (pg *Psql) Find(url string) (uint64, error) {
-	row, err := pg.queryRow("SELECT id FROM links WHERE url = $1", url)
-	if err != nil {
-		return 0, errors.Wrapf(err, "Can't find %v", url)
-	}
+	row, _ := pg.queryRow("SELECT id FROM links WHERE url = $1", url)
 	var id int64
 	if err := row.Scan(&id); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -112,14 +98,11 @@ func (pg *Psql) Find(url string) (uint64, error) {
 func (pg *Psql) Load(decodedId uint64) (string, error) {
 	var url string
 	var expires *time.Time
-	row, err := pg.queryRow("SELECT url, expires FROM links WHERE id = $1", int64(decodedId))
-	if err != nil {
+	row, _ := pg.queryRow("SELECT url, expires FROM links WHERE id = $1", int64(decodedId))
+	if err := row.Scan(&url, &expires); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", model.ErrNoLink
 		}
-		return "", errors.Wrapf(err, "Can't select %v", int64(decodedId))
-	}
-	if err := row.Scan(&url, &expires); err != nil {
 		return "", errors.Wrapf(err, "Can't scan url and expires %v", int64(decodedId))
 	}
 	if expires != nil && expires.Local().UTC().Before(time.Now().UTC()) {
@@ -135,18 +118,12 @@ func (pg *Psql) Close() error {
 }
 
 func (pg *Psql) ping() (time.Duration, error) {
-	conn, err := pg.pool.Acquire(pg.ctx)
-	if err != nil {
-		return 0, errors.New(fmt.Sprintf("Unable to acquire a database connection: %v", err))
-	}
-	defer conn.Release()
 	t := time.Now()
-	row, err := pg.queryRow("SELECT 1")
-	result := 0
-	if err := row.Scan(&result); err != nil {
+	var n int
+	if err := pg.pool.QueryRow(pg.ctx, "SELECT 1").Scan(&n); err != nil {
 		return 0, errors.Wrapf(err, "Can't scan on ping")
 	}
-	return t.Sub(t), err
+	return time.Since(t), nil
 }
 
 func (pg *Psql) Stat(ctx context.Context) (any, error) {
