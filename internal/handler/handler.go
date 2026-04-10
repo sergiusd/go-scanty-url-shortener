@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/sergiusd/go-scanty-url-shortener/internal/base62"
 	"github.com/sergiusd/go-scanty-url-shortener/internal/metrics"
+	"github.com/sergiusd/go-scanty-url-shortener/internal/model"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -242,12 +243,17 @@ func (h *handler) redirect(w http.ResponseWriter, r *http.Request) {
 			`<h1 style="margin-top: 150px; text-align: center; font-size: 72px;">Can't decode code</h1>`,
 			http.StatusInternalServerError,
 		)
+		return
 	}
 
 	uri, useCache, err := h.getUriById(decodedId)
 
 	if err != nil {
-		log.Warnf("Can't get url by id %v: %+v", decodedId, err)
+		if errors.Is(err, model.ErrNoLink) {
+			log.Debugf("Short link not found or expired, id=%v", decodedId)
+		} else {
+			log.Warnf("Can't get url by id %v: %+v", decodedId, err)
+		}
 		if h.err404 != "" {
 			http.Redirect(w, r, h.err404, http.StatusMovedPermanently)
 		} else {
