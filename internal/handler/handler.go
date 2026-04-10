@@ -247,7 +247,7 @@ func (h *handler) redirect(w http.ResponseWriter, r *http.Request) {
 	uri, useCache, err := h.getUriById(decodedId)
 
 	if err != nil {
-		log.Warnf("Can't get url by id: %+v", err)
+		log.Warnf("Can't get url by id %v: %+v", decodedId, err)
 		if h.err404 != "" {
 			http.Redirect(w, r, h.err404, http.StatusMovedPermanently)
 		} else {
